@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>顿悟卡片 · 把想通的那一刻存下来</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">顿</div>
+      <div class="brand-text">
+        <div class="brand-name">顿悟卡片</div>
+        <div class="brand-sub">Insight Cards</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-view="import">
+        <span class="nav-icon">📥</span><span>导入对话</span>
+      </button>
+      <button class="nav-item" data-view="cards">
+        <span class="nav-icon">🗂️</span><span>我的卡片</span>
+        <span class="nav-badge" id="cardCount">0</span>
+      </button>
+      <button class="nav-item" data-view="review">
+        <span class="nav-icon">🔁</span><span>复习</span>
+      </button>
+      <button class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙️</span><span>设置</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="stat-mini">
+        <div class="stat-num" id="statTotal">0</div>
+        <div class="stat-label">张卡片</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-num" id="statMastered">0</div>
+        <div class="stat-label">已掌握</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主内容 -->
+  <main class="main">
+
+    <!-- ============ 导入页 ============ -->
+    <section class="view active" id="view-import">
+      <header class="page-head">
+        <div>
+          <h1>把对话变成卡片</h1>
+          <p class="page-desc">粘贴你和 AI 辩论的那段长对话，自动找出卡点、提炼理解、生成助记和题目。</p>
+        </div>
+      </header>
+
+      <div class="flow-hint">
+        <span class="flow-step">1 贴对话</span><span class="flow-arrow">→</span>
+        <span class="flow-step">2 看识别预览</span><span class="flow-arrow">→</span>
+        <span class="flow-step">3 生成卡片</span><span class="flow-arrow">→</span>
+        <span class="flow-step">4 润色存档</span>
+      </div>
+
+      <!-- 使用教程（可折叠） -->
+      <div class="guide" id="guide">
+        <div class="guide-head" id="guideHead">
+          <span class="guide-badge">?</span>
+          <span><b>第一次用？看这里：对话怎么复制、怎么自动识别</b></span>
+          <span class="guide-toggle" id="guideToggle">展开 ▾</span>
+        </div>
+        <div class="guide-body hidden" id="guideBody">
+          <div class="guide-steps">
+            <div class="gstep">
+              <div class="gstep-num">1</div>
+              <div>
+                <b>去你平时聊天的 App（WorkBuddy / DeepSeek / ChatGPT…）</b>
+                <p>找到那次让你"哦原来如此"的对话。</p>
+              </div>
+            </div>
+            <div class="gstep">
+              <div class="gstep-num">2</div>
+              <div>
+                <b>把对话文字复制下来</b>
+                <p>电脑：在对话区域按住鼠标拖动选中文字，或按 Ctrl+A 全选 → Ctrl+C 复制。<br>手机：长按文字 → 全选 → 复制。<br>有的 App 有"分享/导出"按钮，用它导出文本也可以。</p>
+              </div>
+            </div>
+            <div class="gstep">
+              <div class="gstep-num">3</div>
+              <div>
+                <b>贴到下面的大框里</b>
+                <p>粘贴 → 点"看识别预览" → 工具会猜哪段是你、哪段是 AI。<b>猜错了点一下就能改。</b></p>
+              </div>
+            </div>
+            <div class="gstep">
+              <div class="gstep-num">4</div>
+              <div>
+                <b>它凭什么知道谁是谁？</b>
+                <p>如果对话里带"用户：/ 助手：/ User: / AI:"这类字样，它就照着分；<br>如果没有，就按"你说一段、AI 答一段"交替猜——所以<b>顺序别打乱</b>。</p>
+              </div>
+            </div>
+          </div>
+          <div class="guide-tip">💡 最简单：全选复制、原样粘贴、顺序不乱，就够了。看不懂的标记不用管，识别预览里能改。</div>
+        </div>
+      </div>
+
+      <!-- 来源选择 -->
+      <div class="panel">
+        <div class="panel-title"><span class="step-dot">1</span> 对话从哪里来？</div>
+        <div class="source-grid" id="sourceGrid"></div>
+      </div>
+
+      <!-- 手动两段输入 -->
+      <div class="panel hidden" id="manualPanel">
+        <div class="panel-title"><span class="step-dot">2</span> 分别粘贴</div>
+        <label class="field-label">标题（可选）</label>
+        <input type="text" class="input" id="manualTitle" placeholder="例如：闭包和作用域的区别">
+        <label class="field-label">我的疑问 / 我卡住的地方</label>
+        <textarea class="input textarea" id="manualQuestion" rows="5" placeholder="把你当时困惑、反驳、追问的话贴在这里…"></textarea>
+        <label class="field-label">AI 的解答</label>
+        <textarea class="input textarea" id="manualAnswer" rows="7" placeholder="把 AI 讲解、你们辩论的内容贴在这里…"></textarea>
+      </div>
+
+      <!-- 通用粘贴 -->
+      <div class="panel" id="pastePanel">
+        <div class="panel-title"><span class="step-dot">1</span> 粘贴对话内容 <span class="auto-tag" id="autoTag"></span></div>
+        <textarea class="input textarea big" id="rawInput" rows="11" placeholder="把对话原样贴进来就行——直接全选复制、粘贴即可，不用管格式。点下面的「看识别预览」就能看到它怎么分的。"></textarea>
+        <div class="paste-help">
+          <label class="inline-check">
+            <input type="checkbox" id="useAI"> 用 AI 深度归纳（需在设置里填 key，不填则自动用本地分析）
+          </label>
+          <span class="file-btn" id="fileBtnWrap">
+            <input type="file" id="fileInput" accept=".txt,.json,.md">
+            或选择文件导入
+          </span>
+        </div>
+        <details class="advanced" id="advancedBox">
+          <summary>高级：来源格式不对？手动选 / 自定义（一般不用管）</summary>
+          <div class="source-grid compact" id="sourceGrid"></div>
+        </details>
+      </div>
+
+      <div class="action-row">
+        <button class="btn ghost" id="clearInputBtn">清空</button>
+        <button class="btn secondary" id="previewBtn">🔍 看识别预览</button>
+      </div>
+
+      <!-- 识别预览 -->
+      <div class="panel preview-panel hidden" id="previewPanel">
+        <div class="panel-title"><span class="step-dot">2</span> 识别预览 <span class="preview-count" id="previewCount"></span></div>
+        <p class="hint" style="margin-top:-6px">下面是工具猜的角色。<b>点角色标签可以切换</b>（用户 ⇄ AI 答），改完再生成。</p>
+        <div class="preview-search">
+          <input type="text" class="input" id="previewKeyword" placeholder="🔍 输入关键词，快速定位相关对话（如：闭包、引用、坑）">
+          <label class="inline-check"><input type="checkbox" id="onlyMatch"> 只看含关键词的</label>
+        </div>
+        <div class="preview-list" id="previewList"></div>
+        <div class="action-row" style="margin:16px 0 0">
+          <button class="btn ghost" id="regenPreviewBtn">重新识别</button>
+          <button class="btn primary" id="parseBtn">生成卡片 →</button>
+        </div>
+      </div>
+
+      <div class="result-box hidden" id="resultBox"></div>
+    </section>
+
+    <!-- ============ 卡片库 ============ -->
+    <section class="view" id="view-cards">
+      <header class="page-head">
+        <div>
+          <h1>我的卡片</h1>
+          <p class="page-desc">生成的卡片都在这里。点开可以润色——用自己的话改过，才是真的记住。</p>
+        </div>
+        <button class="btn primary small" id="addCardBtn">+ 新建卡片</button>
+      </header>
+
+      <div class="toolbar">
+        <input type="text" class="input search" id="searchInput" placeholder="🔍 搜索标题 / 内容 / 关键词">
+        <select class="input select" id="sortSelect">
+          <option value="newest">最新生成</option>
+          <option value="weak">最该复习（掌握度低）</option>
+          <option value="reviewed">最近复习过</option>
+          <option value="starred">星标优先</option>
+        </select>
+      </div>
+
+      <div class="tag-filter" id="tagFilter"></div>
+      <div class="card-grid" id="cardGrid"></div>
+      <div class="empty-state hidden" id="cardsEmpty">
+        <div class="empty-icon">🗂️</div>
+        <h3>还没有卡片</h3>
+        <p>去「导入对话」贴一段你和 AI 的对话，就能生成第一批卡片。</p>
+        <button class="btn primary small" data-goto="import">去导入</button>
+      </div>
+    </section>
+
+    <!-- ============ 复习页 ============ -->
+    <section class="view" id="view-review">
+      <header class="page-head">
+        <div>
+          <h1>复习</h1>
+          <p class="page-desc">盖住答案先自己想一遍，再翻面对照。想不起来的，明天还会出现。</p>
+        </div>
+      </header>
+
+      <div class="review-setup" id="reviewSetup">
+        <div class="setup-card">
+          <div class="setup-icon">🧠</div>
+          <h3>抽卡复习</h3>
+          <p>看卡点和场景，先回忆，再翻面看理解。</p>
+          <button class="btn primary" id="startReviewBtn">开始复习 <span class="review-count" id="dueCount">0</span></button>
+        </div>
+        <div class="setup-card">
+          <div class="setup-icon">✏️</div>
+          <h3>自测题目</h3>
+          <p>用自动生成的题目检验自己是否真的懂了。</p>
+          <button class="btn secondary" id="startQuizBtn">开始自测 <span class="review-count" id="quizCount">0</span></button>
+        </div>
+      </div>
+
+      <div class="review-session hidden" id="reviewSession">
+        <div class="review-progress">
+          <span id="reviewProgressText">1 / 10</span>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+          <button class="btn ghost tiny" id="exitReviewBtn">退出</button>
+        </div>
+        <div class="flashcard" id="flashcard">
+          <div class="flashcard-face" id="flashcardFront">
+            <div class="fc-label">先想想：这个点你卡在哪？</div>
+            <div class="fc-title" id="fcTitle"></div>
+            <div class="fc-scene" id="fcScene"></div>
+            <div class="fc-hint">想好了再翻面 ↓</div>
+          </div>
+          <div class="flashcard-face hidden" id="flashcardBack">
+            <div class="fc-label">正确理解</div>
+            <div class="fc-insight" id="fcInsight"></div>
+            <div class="fc-mnemonic" id="fcMnemonic"></div>
+          </div>
+        </div>
+        <div class="review-actions" id="reviewActions">
+          <button class="btn flip" id="flipBtn">翻面看答案</button>
+          <div class="grade-row hidden" id="gradeRow">
+            <button class="btn grade forgot" data-grade="0">忘了</button>
+            <button class="btn grade fuzzy" data-grade="2">模糊</button>
+            <button class="btn grade got" data-grade="4">记住了</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="quiz-session hidden" id="quizSession">
+        <div class="review-progress">
+          <span id="quizProgressText">1 / 10</span>
+          <div class="progress-bar"><div class="progress-fill" id="quizProgressFill"></div></div>
+          <button class="btn ghost tiny" id="exitQuizBtn">退出</button>
+        </div>
+        <div class="quiz-card">
+          <div class="quiz-type" id="quizType">简答</div>
+          <div class="quiz-q" id="quizQ"></div>
+          <div class="quiz-a hidden" id="quizA"></div>
+        </div>
+        <div class="review-actions">
+          <button class="btn flip" id="showAnswerBtn">显示答案</button>
+          <div class="grade-row hidden" id="quizGradeRow">
+            <button class="btn grade forgot" data-grade="0">没答对</button>
+            <button class="btn grade got" data-grade="4">答对了</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="empty-state hidden" id="reviewEmpty">
+        <div class="empty-icon">🔁</div>
+        <h3>还没有可复习的内容</h3>
+        <p>先导入对话生成卡片，就可以开始复习了。</p>
+        <button class="btn primary small" data-goto="import">去导入</button>
+      </div>
+    </section>
+
+    <!-- ============ 设置页 ============ -->
+    <section class="view" id="view-settings">
+      <header class="page-head">
+        <div>
+          <h1>设置</h1>
+          <p class="page-desc">默认用本地分析，不花钱、不填 key。想更聪明就接一个 AI。密钥只存在你自己浏览器里。</p>
+        </div>
+      </header>
+
+      <div class="panel">
+        <div class="panel-title">AI 模型（可选）</div>
+        <label class="field-label">预设</label>
+        <select class="input select" id="presetSelect">
+          <option value="deepseek">DeepSeek（便宜）</option>
+          <option value="glm">智谱 GLM（ cheaper，用户推荐）</option>
+          <option value="custom">自定义（OpenAI 兼容）</option>
+        </select>
+        <label class="field-label">API 地址</label>
+        <input type="text" class="input" id="baseUrlInput" placeholder="https://api.deepseek.com">
+        <label class="field-label">模型名</label>
+        <input type="text" class="input" id="modelInput" placeholder="deepseek-chat">
+        <label class="field-label">API Key</label>
+        <input type="password" class="input" id="apiKeyInput" placeholder="留空则只用本地分析">
+        <p class="hint">DeepSeek: platform.deepseek.com ｜ GLM: bigmodel.cn。填了 key 后，在导入页勾选「用 AI 深度归纳」即可。</p>
+        <button class="btn secondary small" id="saveSettingsBtn">保存设置</button>
+        <span class="save-tip" id="settingsTip"></span>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">数据管理</div>
+        <p class="hint">卡片存在本机浏览器。导出备份可以保存、迁移或分享给别人；导入备份可恢复。</p>
+        <div class="btn-row">
+          <button class="btn secondary small" id="exportBtn">⬇ 导出备份</button>
+          <label class="btn secondary small file-label">
+            <input type="file" id="importBackupInput" accept=".json">⬆ 导入备份
+          </label>
+          <button class="btn danger small" id="clearAllBtn">清空所有数据</button>
+        </div>
+      </div>
+
+      <div class="panel about">
+        <div class="panel-title">这个工具在做什么？</div>
+        <p>你和 AI 辩论完，上下文很长、当时想通了却很快忘。<b>顿悟卡片</b>做的事：读这段旧对话 → 找出你卡住的点 → 提炼正确理解 → 生成助记和题目 → 存成可以反复复习的卡片。</p>
+        <p>「本地分析」用规则抽取金句和关键词，开箱即用；「AI 深度归纳」理解更深，但要配 key。生成后<b>一定要自己润色</b>——用自己的话改过，才真正属于你。</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- 卡片编辑弹窗 -->
+<div class="modal hidden" id="editModal">
+  <div class="modal-mask" data-close="editModal"></div>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>编辑卡片</h2>
+      <button class="icon-btn" data-close="editModal">✕</button>
+    </div>
+    <div class="modal-body" id="editBody"></div>
+    <div class="modal-foot">
+      <button class="btn danger tiny" id="deleteCardBtn">删除卡片</button>
+      <div>
+        <button class="btn ghost small" data-close="editModal">取消</button>
+        <button class="btn primary small" id="saveCardBtn">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 结果弹窗（生成后确认） -->
+<div class="modal hidden" id="resultModal">
+  <div class="modal-mask" data-close="resultModal"></div>
+  <div class="modal-box">
+    <div class="modal-head"><h2>生成完成</h2><button class="icon-btn" data-close="resultModal">✕</button></div>
+    <div class="modal-body" id="resultModalBody"></div>
+    <div class="modal-foot">
+      <button class="btn ghost small" data-close="resultModal">稍后</button>
+      <button class="btn primary small" id="goCardsBtn">去卡片库润色 →</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="js/importers.js"></script>
+<script src="js/analyzer.js"></script>
+<script src="js/store.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
