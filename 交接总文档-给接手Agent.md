@@ -9,7 +9,9 @@
 
 把「用户和 LLM 辩论后的对话记录」转成「可复习的知识卡片」的**零依赖静态网页**。核心链路：`对话文本 → 结构化卡片草稿 → 人工润色 → 间隔复习`。设计上刻意保持**纯前端、无后端、无构建**，靠 localStorage 持久化。
 
-- 线上：https://dasein-chao.github.io/insight-cards/ （GitHub Pages，实测 200）
+- 线上：https://dasein-chao.github.io/ （GitHub Pages 用户主页仓库，最简网址，实测 200）
+- 旧路径 `/insight-cards/` 保留了一个自动跳转页兼容老链接（仓库内 `insight-cards/index.html`）
+- **铁律：所有开发改动必须在 GitHub 留痕**——每次改完代码，先本地 `git commit`，再用 token 同步到 GitHub 仓库，最后重打包 zip。用户明确要求过，接手后必须遵守。
 - 仓库：`dasein-chao/insight-cards`（public / main）
 - 本地：`/workspace/insight-cards`；打包 `/workspace/insight-cards.zip`
 
