@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>顿悟卡片 · 把想通的那一刻存下来</title>
-<link rel="stylesheet" href="css/style.css?v=20261124d">
+<link rel="stylesheet" href="css/style.css?v=20261124e">
 </head>
 <body>
 
@@ -128,9 +128,9 @@
       <!-- 链接导入 -->
       <div class="panel link-panel" id="linkPanel">
         <div class="panel-title"><span class="link-icon">🔗</span> 有分享链接？直接读进来 <span class="link-tag">新</span></div>
-        <p class="hint" style="margin-top:-6px">Gemini / ChatGPT 的「分享对话」会生成一个公开链接。把链接贴进来，自动读出对话文本——不用手动复制。</p>
+        <p class="hint" style="margin-top:-6px">Gemini / ChatGPT / DeepSeek 的「分享对话」会生成一个公开链接。把链接贴进来，自动读出对话文本——不用手动复制。DS 若只读到联网搜索外壳，工具会尽力剥离，读不出就按提示手动复制。</p>
         <div class="link-row">
-          <input type="text" class="input" id="linkInput" placeholder="粘贴分享链接，例如 g.co/gemini/share/... 或 chatgpt.com/share/...">
+          <input type="text" class="input" id="linkInput" placeholder="粘贴分享链接，例如 g.co/gemini/share/...、chatgpt.com/share/... 或 chat.deepseek.com/share/...">
           <button class="btn secondary" id="fetchLinkBtn">读取链接</button>
         </div>
         <div class="link-status hidden" id="linkStatus"></div>
@@ -378,9 +378,9 @@
 
 <div class="toast hidden" id="toast"></div>
 
-<script src="js/importers.js?v=20261124d"></script>
-<script src="js/analyzer.js?v=20261124d"></script>
-<script src="js/store.js?v=20261124d"></script>
-<script src="js/app.js?v=20261124d"></script>
+<script src="js/importers.js?v=20261124e1"></script>
+<script src="js/analyzer.js?v=20261124e"></script>
+<script src="js/store.js?v=20261124e"></script>
+<script src="js/app.js?v=20261124e1"></script>
 </body>
 </html>
