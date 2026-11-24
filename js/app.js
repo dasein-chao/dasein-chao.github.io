@@ -97,6 +97,110 @@
     }
   }
 
+  /* ---------- DeepSeek 一键导出器：安装检测 + 自动回传 ---------- */
+  var DS_MAGIC = '__dasein_export_v1__';
+  var DS_TOKEN_KEY = 'dasein_ds_token';
+
+  // 油猴商店按浏览器给正确地址；移动端给出提示
+  function dsStoreInfo() {
+    var ua = navigator.userAgent;
+    var mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+    var url, name;
+    if (/Edg\//.test(ua)) { url = 'https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd'; name = 'Edge'; }
+    else if (/Firefox\//i.test(ua)) { url = 'https://addons.mozilla.org/zh-CN/firefox/addon/tampermonkey/'; name = 'Firefox'; }
+    else if (/Chrome\//.test(ua)) { url = 'https://chromewebstore.google.com/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo'; name = 'Chrome'; }
+    else { url = 'https://www.tampermonkey.net/'; name = '你的浏览器'; }
+    return { url: url, name: name, mobile: mobile };
+  }
+
+  // 检测导出脚本是否已装（脚本在产品页会打标记 + 派发事件）
+  function checkDsInstalled() {
+    var installed = !!(window.__daseinDsExport && window.__daseinDsExport.installed) ||
+      document.documentElement.hasAttribute('data-ds-export-installed');
+    var badge = $('#dsStepStatus');
+    var goBtn = $('#dsGoBtn');
+    var hint = $('#dsGoHint');
+    if (!badge) return installed;
+    if (installed) {
+      badge.innerHTML = '<span class="ds-ok">✓ 已安装，可以直接用了</span>';
+      badge.classList.remove('hidden');
+      if (goBtn) { goBtn.classList.remove('hidden', 'disabled'); goBtn.textContent = '🚀 去 DeepSeek 导出，自动送回这里'; }
+      if (hint) hint.textContent = '点下面的按钮打开 DeepSeek，导出后数据会自动回到这个页面。';
+    } else {
+      badge.innerHTML = '<span class="ds-wait">尚未检测到导出器，按上面 ①② 步安装</span>';
+      badge.classList.remove('hidden');
+      if (goBtn) goBtn.textContent = '🚀 去 DeepSeek 导出，自动送回这里';
+    }
+    return installed;
+  }
+
+  // 一键跳转：生成一次性令牌，带在 DS 网址上；导出脚本会凭它把数据送回
+  function goDsExport() {
+    var info = dsStoreInfo();
+    if (info.mobile) { toast('手机浏览器装不了油猴，请用电脑操作，或手动复制对话'); return; }
+    var installed = !!(window.__daseinDsExport && window.__daseinDsExport.installed) ||
+      document.documentElement.hasAttribute('data-ds-export-installed');
+    if (!installed) {
+      toast('请先完成上面 ①② 步安装，再点这个按钮');
+      checkDsInstalled();
+      return;
+    }
+    var token = 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+    try { sessionStorage.setItem(DS_TOKEN_KEY, token); } catch (e) {}
+    var from = location.href.split('#')[0];
+    var target = 'https://chat.deepseek.com/?dasein_from=' + encodeURIComponent(from) +
+      '&dasein_token=' + encodeURIComponent(token) + '&dasein_t=' + Date.now();
+    window.open(target, '_blank', 'noopener');
+    setLinkStatus('loading', '已打开 DeepSeek。<b>在页面右下角点「🚀 导出并自动返回」</b>，稍等几秒，对话会自动回到这里并生成卡片——不用复制、不用切回来。');
+    $('#linkPanel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    toast('已打开 DeepSeek，点右下角的导出按钮即可');
+  }
+
+  // 接收导出脚本 postMessage 回来的数据（magic + 一次性令牌双重校验）
+  function listenDsExport() {
+    window.addEventListener('message', function (e) {
+      var d = e.data;
+      if (!d || d.magic !== DS_MAGIC || !d.data) return;
+      // 令牌校验：必须是本标签页刚发出的令牌，且只用一次
+      var expect = null;
+      try { expect = sessionStorage.getItem(DS_TOKEN_KEY); } catch (err) {}
+      if (!expect || d.token !== expect) {
+        setLinkStatus('err', '收到导出数据，但令牌对不上（可能是上一次的旧窗口）。请回到本页重新点「去 DeepSeek 导出」，再在 DeepSeek 点导出。');
+        return;
+      }
+      try { sessionStorage.removeItem(DS_TOKEN_KEY); } catch (err) {}
+      // 自动回传=用户已在 DS 点过一次，这里直接一步到位生成卡片，不再要求二次点击
+      setLinkStatus('ok', '✅ 已收到 DeepSeek 导出的完整对话，卡片已生成，去卡片库查看/润色。');
+      goto('cards');
+      setTimeout(function () {
+        try {
+          var payload = d.data;
+          if (payload.format === 'conversation-bundle') {
+            handleExportedFile(payload); // 全量包：内部直接入库 + 弹结果
+            return;
+          }
+          // 单对话：直接解析→生成卡片→入库→弹结果，跳过预览
+          var conv = Importers.parse('dsjson', payload);
+          if (!conv.messages.length) { toast('对话里没有可生成的消息'); return; }
+          var made = Analyzer.analyzeLocal(conv);
+          var okN = 0;
+          Store.update(function (st) {
+            st.conversations.unshift(conv);
+            st.cards = made.concat(st.cards);
+            okN = made.length;
+          });
+          state = Store.load(); persist(); renderCards();
+          showImportResult(1, okN, 1);
+          toast('已自动生成 ' + okN + ' 张草稿卡片，去卡片库润色');
+        } catch (err) {
+          setLinkStatus('err', '数据收到了，但生成卡片时出错：' + esc(err.message || String(err)));
+        }
+      }, 60);
+    });
+    // 脚本晚于页面加载注入时用事件再检测一次
+    window.addEventListener('dasein-ds-installed', checkDsInstalled);
+  }
+
   function showImportResult(ok, cards, total) {
     $('#resultModalBody').innerHTML =
       '<p style="margin-bottom:14px;color:#5b6270">从 DeepSeek 导出文件导入了 <b style="color:#10a37f">' + ok + '</b> / ' + total + ' 个对话，' +
@@ -627,6 +731,19 @@
     $('#fetchLinkBtn').addEventListener('click', doFetchLink);
     $('#linkInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doFetchLink(); });
 
+    // DeepSeek 一键导出器向导
+    if ($('#dsGoBtn')) {
+      $('#dsGoBtn').addEventListener('click', goDsExport);
+      var store = dsStoreInfo();
+      if ($('#dsStoreLink')) {
+        $('#dsStoreLink').href = store.url;
+        $('#dsStoreName').textContent = store.name;
+      }
+      if (store.mobile && $('#dsStep1')) {
+        $('#dsStep1').innerHTML = '<b>请在电脑上操作</b>：手机浏览器装不了油猴导出器。在电脑浏览器打开本页，按下面步骤装一次即可。';
+      }
+    }
+
     $('#fileInput').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return;
       var r = new FileReader();
@@ -729,6 +846,11 @@
     refreshCounts();
     bind();
     renderCards();
+    listenDsExport();
+    // 脚本用 @run-at document-idle，可能晚于本页加载；多探测几次
+    checkDsInstalled();
+    setTimeout(checkDsInstalled, 400);
+    setTimeout(checkDsInstalled, 1500);
   }
   init();
 })();
