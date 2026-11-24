@@ -12,6 +12,7 @@
 - 线上：https://dasein-chao.github.io/ （GitHub Pages 用户主页仓库，最简网址，实测 200）
 - 旧路径 `/insight-cards/` 保留了一个自动跳转页兼容老链接（仓库内 `insight-cards/index.html`）
 - **铁律：所有开发改动必须在 GitHub 留痕**——每次改完代码，先本地 `git commit`，再用 token 同步到 GitHub 仓库，最后重打包 zip。用户明确要求过，接手后必须遵守。
+- **铁律：每次改 JS/CSS 必须递增 index.html 里的版本号 `?v=...`**（当前 `20261124c`，在 4 个 script + 1 个 link 引用上）。**血泪教训**：2026-11-24 用户报告"改了没变化"，我用命令行带随机参数绕过 CDN 测到新代码、以为好了；但用户浏览器缓存了旧 JS，压根没下载到修复。改代码 ≠ 用户看到效果——不升版本号，用户永远加载缓存旧文件。接手改任何 js/css 后，务必把 `?v=` 值改掉（如 `20261124d`），否则用户看不到你的改动，会反复报告"没变化"。
 - 仓库：`dasein-chao/insight-cards`（public / main）
 - 本地：`/workspace/insight-cards`；打包 `/workspace/insight-cards.zip`
 
