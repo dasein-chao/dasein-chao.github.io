@@ -563,10 +563,14 @@
       var before = $('#rawInput').value;
       if (!before.trim()) { toast('先粘贴对话内容'); return; }
       var after = Importers.sanitize(before);
+      if (!after.trim()) {
+        toast('这段里只有联网搜索外壳、没有对话正文——请在原对话里全选复制文字再贴进来');
+        return;
+      }
       if (after === before.trim()) { toast('格式已经很干净了，不用整理'); return; }
       $('#rawInput').value = after; updateAutoDetect();
       previewConv = null; $('#previewPanel').classList.add('hidden');
-      toast('已整理：去掉网址/#号/反引号等噪音（' + before.length + ' → ' + after.length + ' 字）');
+      toast('已整理：去掉网址/#号等噪音（' + before.length + ' → ' + after.length + ' 字）');
     });
 
     // 链接读取
