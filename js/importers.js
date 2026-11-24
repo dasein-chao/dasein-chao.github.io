@@ -443,6 +443,35 @@
       return s;
     }
 
+    // 判断读回来的文本是不是「真对话」，还是网页导航外壳（登录页/落地页/Cookie 提示）。
+    // Gemini 分享链接若需登录或失效，r.jina.ai 只会读到页眉页脚：
+    //   [About Gemini] / (https://support.google.com/...) / [Subscriptions] ...
+    // 这种文本没有对话角色标记、满是 URL 和短标签行，必须拦下，不能塞进框里假装成功。
+    function looksLikeConversation(txt) {
+      var s = String(txt || '');
+      // 1) 强信号：有明确的对话角色标记
+      if (/(You said|Gemini said|ChatGPT said|^用户[:：]|^助手[:：]|^我[:：]|^AI[:：])/im.test(s)) return true;
+      // 2) 弱信号统计
+      var lines = s.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+      if (!lines.length) return false;
+      var urlLines = 0, bracketLines = 0, longLines = 0;
+      lines.forEach(function (l) {
+        // 以 URL 开头（可带括号），或整行基本就是个网址 → 外壳
+        if (/^[\(\[]?\s*https?:\/\/\S+[\)\]]?\s*$/i.test(l)) urlLines++;
+        // [About Gemini] 这类方括号短标签 → 外壳
+        if (/^\[[^\]]{1,40}\]$/.test(l)) bracketLines++;
+        // 有实质正文（>=15 个中英文字，且不是纯网址）
+        var wordChars = l.replace(/[^\u4e00-\u9fa5A-Za-z]/g, '').length;
+        if (wordChars >= 15 && !/https?:\/\//i.test(l)) longLines++;
+      });
+      // 网页外壳特征：URL 行或方括号标签行占比高，且几乎没有长正文
+      var shellLines = urlLines + bracketLines;
+      if (longLines < 2 && shellLines >= 3) return false;
+      if (shellLines / lines.length > 0.4 && longLines < 3) return false;
+      // 至少得有几行像样的正文
+      return longLines >= 2;
+    }
+
     // 依次尝试代理，返回第一个非空结果；全部失败则抛出可读错误
     function fetchLink(raw, onProgress) {
       var url = normalizeUrl(raw);
@@ -450,13 +479,20 @@
       var i = 0, lastErr = null;
       function next() {
         if (i >= PROXIES.length) {
-          return Promise.reject(new Error('所有读取通道都失败了。可能原因：网络不通、链接需登录、或对方禁止抓取。请改用手动复制。' + (lastErr ? '（' + lastErr.message + '）' : '')));
+          var hint = /网页导航/.test(lastErr && lastErr.message)
+            ? '读到的都是网页导航，不是对话——这个分享链接多半需要登录或已失效。请在 Gemini 里重新生成分享链接，或改用手动复制对话文字。'
+            : '所有读取通道都失败了。可能原因：网络不通、链接需登录、或对方禁止抓取。请改用手动复制。';
+          return Promise.reject(new Error(hint + (lastErr ? '（' + lastErr.message + '）' : '')));
         }
         var p = PROXIES[i++];
         if (onProgress) onProgress(p.name);
         return p.get(url).then(function (txt) {
           var cleaned = cleanText(txt);
           if (cleaned.length < 20) throw new Error('读到的内容太短');
+          // 关键校验：读到的必须是「对话」，不是网页导航外壳
+          if (!looksLikeConversation(cleaned)) {
+            throw new Error('读到的是网页导航（不是对话）。链接可能需登录或已失效');
+          }
           return { text: cleaned, via: p.name, url: url };
         }).catch(function (e) { lastErr = e; return next(); });
       }
