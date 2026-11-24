@@ -241,6 +241,22 @@
     return null;
   }
 
+  // 归一化后比较两段文字是否为「同一句话/复述」
+  function normCmp(s) {
+    return String(s || '').replace(/[\s，。！？、,.:;：；!?"'"`*_#\-—…~～]/g, '').toLowerCase();
+  }
+  function isEchoOfUser(content, lastUser) {
+    var a = normCmp(content), b = normCmp(lastUser);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    // 一段完整包含另一段且长度接近：视为「用户问题的复述」
+    if (a.length >= 8 && b.length >= 8 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0)) {
+      var ratio = Math.min(a.length, b.length) / Math.max(a.length, b.length);
+      if (ratio >= 0.75) return true;
+    }
+    return false;
+  }
+
   function isShareRender(text) {
     return /(You said|Gemini said|Final URL\s*:|Markdown Content\s*:|URL Source\s*:|^\s*#{1,6}\s)/im.test(String(text || ''));
   }
@@ -248,7 +264,7 @@
   // 分享页渲染文本：以 You said 为用户轮分隔，其后的内容归助手
   function sanitizeShare(text) {
     var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-    var out = [], state = 'none';
+    var out = [], state = 'none', lastUserContent = '';
     lines.forEach(function (line) {
       var t = cleanLine(line);
       if (t === null) return;
@@ -258,8 +274,11 @@
       if (role) {
         out.push((role.role === 'user' ? '用户：' : '助手：') + role.content);
         state = role.role;
+        if (role.role === 'user') lastUserContent = role.content;
       } else if (state === 'user') {
-        // 用户标记后的第一段内容 = 助手回答开始（r.jina.ai 渲染不标 Gemini said）
+        // 用户标记后的第一段 = 助手回答开始（r.jina.ai 不标 Gemini said）。
+        // 但分享页常在正文开头把用户问题再复述一遍，这种「用户：X / 助手：X」是假回答，跳过。
+        if (isEchoOfUser(t, lastUserContent)) return; // 丢弃复述，保持 state='user' 等真正回答
         out.push('助手：' + t);
         state = 'assistant';
       } else {
@@ -269,19 +288,61 @@
     return out.join('\n').trim();
   }
 
+  // 通用后处理：删掉「助手：X」紧跟在「用户：X」后面、内容其实是用户问题复述的假回答行。
+  // 无论文本走了分享分支还是普通分支，只要成品里出现这种相邻重复，都清掉。
+  function dropEchoPairs(text) {
+    var lines = String(text || '').split('\n');
+    var out = [];
+    var i = 0;
+    while (i < lines.length) {
+      var line = lines[i];
+      var m = line.match(/^助手[:：]\s*(.+)$/);
+      var isEcho = false;
+      if (m && out.length) {
+        // 往前找最近的一条「用户：」行（只比对紧邻几行），内容若是复述则判定为真
+        for (var j = out.length - 1; j >= 0 && j >= out.length - 3; j--) {
+          var um = out[j].match(/^用户[:：]\s*(.+)$/);
+          if (um && isEchoOfUser(m[1], um[1])) { isEcho = true; break; }
+          if (um) break;
+        }
+      }
+      if (isEcho) {
+        // 丢弃这条复述行；紧随其后的无标记续行是真回答，给它们补上「助手：」
+        i++;
+        while (i < lines.length) {
+          var nxt = lines[i].trim();
+          if (!nxt) { i++; continue; }
+          if (/^(用户|助手|我|提问|问|回答|答|You|Gemini|Assistant|User|AI|Human)[:：]/i.test(nxt)) break; // 下个角色开始
+          out.push('助手：' + lines[i]);
+          i++;
+        }
+        continue;
+      }
+      out.push(line);
+      i++;
+    }
+    return out.join('\n');
+  }
+
   function sanitize(raw) {
     var s = String(raw || '');
     if (!s.trim()) return '';
-    if (isShareRender(s)) return sanitizeShare(s);
-    // 普通文本：只清噪音，保留原有对话结构
-    var lines = s.replace(/\r\n?/g, '\n').split('\n');
-    var out = [];
-    lines.forEach(function (line) {
-      var t = cleanLine(line);
-      if (t === null) return;
-      out.push(t);
-    });
-    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    var cleaned;
+    if (isShareRender(s)) {
+      cleaned = sanitizeShare(s);
+    } else {
+      // 普通文本：只清噪音，保留原有对话结构
+      var lines = s.replace(/\r\n?/g, '\n').split('\n');
+      var out = [];
+      lines.forEach(function (line) {
+        var t = cleanLine(line);
+        if (t === null) return;
+        out.push(t);
+      });
+      cleaned = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
+    // 出口统一去「用户X/助手X」复述对，覆盖所有分支
+    return dropEchoPairs(cleaned).trim();
   }
 
   global.Importers = {
