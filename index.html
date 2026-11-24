@@ -85,8 +85,8 @@
             <div class="gstep">
               <div class="gstep-num">2</div>
               <div>
-                <b>把对话文字复制下来</b>
-                <p>电脑：在对话区域按住鼠标拖动选中文字，或按 Ctrl+A 全选 → Ctrl+C 复制。<br>手机：长按文字 → 全选 → 复制。<br>有的 App 有"分享/导出"按钮，用它导出文本也可以。</p>
+                <b>把对话弄进来（两种方式任选）</b>
+                <p><b>方式一 · 有分享链接最省事：</b>Gemini / ChatGPT 点"分享对话"会生成一个公开链接，把它贴到下面紫色框里点"读取链接"，对话文字自动填好。<br><b>方式二 · 手动复制：</b>电脑 Ctrl+A 全选 → Ctrl+C；手机长按 → 全选 → 复制，贴到大框里。<br>⚠️ 分享链接会经过公共中转，敏感内容请用手动复制。</p>
               </div>
             </div>
             <div class="gstep">
@@ -123,6 +123,21 @@
         <textarea class="input textarea" id="manualQuestion" rows="5" placeholder="把你当时困惑、反驳、追问的话贴在这里…"></textarea>
         <label class="field-label">AI 的解答</label>
         <textarea class="input textarea" id="manualAnswer" rows="7" placeholder="把 AI 讲解、你们辩论的内容贴在这里…"></textarea>
+      </div>
+
+      <!-- 链接导入 -->
+      <div class="panel link-panel" id="linkPanel">
+        <div class="panel-title"><span class="link-icon">🔗</span> 有分享链接？直接读进来 <span class="link-tag">新</span></div>
+        <p class="hint" style="margin-top:-6px">Gemini / ChatGPT 的「分享对话」会生成一个公开链接。把链接贴进来，自动读出对话文本——不用手动复制。</p>
+        <div class="link-row">
+          <input type="text" class="input" id="linkInput" placeholder="粘贴分享链接，例如 g.co/gemini/share/... 或 chatgpt.com/share/...">
+          <button class="btn secondary" id="fetchLinkBtn">读取链接</button>
+        </div>
+        <div class="link-status hidden" id="linkStatus"></div>
+        <details class="link-note">
+          <summary>关于隐私和失败怎么办（点开看）</summary>
+          <p>读取时对话内容会经过公共中转服务，<b>敏感内容请改用手动复制</b>。如果读取失败（链接需登录、网络不通、或对方禁止抓取），工具会自动换几个通道再试；都不行就把链接用浏览器打开、全选复制文本，贴到下面的框里，效果一样。</p>
+        </details>
       </div>
 
       <!-- 通用粘贴 -->
