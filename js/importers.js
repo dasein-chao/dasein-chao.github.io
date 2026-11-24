@@ -232,35 +232,57 @@
       return /(g\.co\/gemini\/share|gemini\.google\.com\/(share|app)|chatgpt\.com\/(share|s)\/|share\.gemini\.google)/i.test(s);
     }
 
+    // 单个请求超时（毫秒）：超时就换下一个通道，避免一直卡住
+    var TIMEOUT = 20000;
+
+    function fetchWithTimeout(url, opt) {
+      return new Promise(function (resolve, reject) {
+        var done = false;
+        var timer = setTimeout(function () {
+          if (!done) { done = true; reject(new Error('超时')); }
+        }, TIMEOUT);
+        fetch(url, opt).then(function (r) {
+          if (done) return; done = true; clearTimeout(timer); resolve(r);
+        }).catch(function (e) {
+          if (done) return; done = true; clearTimeout(timer); reject(e);
+        });
+      });
+    }
+
+    function okText(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }
+
     // 公共只读代理列表：各返回一个 Promise<string>（代理抓到的原始文本）
+    // r.jina.ai 是「服务端渲染型」代理——它在自己服务器上跑浏览器渲染动态页，
+    // 正好能读 Gemini/ChatGPT 分享页这种 JS 动态页面，故列为首选。
     var PROXIES = [
       {
         name: 'r.jina.ai',
-        get: function (u) { return fetch('https://r.jina.ai/' + encodeURI(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }); }
+        get: function (u) { return fetchWithTimeout('https://r.jina.ai/' + encodeURI(u)).then(okText); }
       },
       {
         name: 'allorigins',
-        get: function (u) {
-          return fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
-        }
+        get: function (u) { return fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(u)).then(okText); }
       },
       {
         name: 'codetabs',
-        get: function (u) {
-          return fetch('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
-        }
+        get: function (u) { return fetchWithTimeout('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u)).then(okText); }
       }
     ];
 
-    // 把代理返回的 markdown / HTML 粗略清理成对话文本
+    // 把代理返回的 markdown / HTML 清理成对话文本
     function cleanText(txt) {
       var s = String(txt || '');
-      // 去掉 jina 的标题/链接元信息行
+      // 1. 去掉 jina 的元信息行
       s = s.replace(/^Title:.*$/gm, '')
            .replace(/^URL Source:.*$/gm, '')
            .replace(/^Markdown Content:\s*$/gm, '')
-           .replace(/^Source:.*$/gm, '');
-      // 去掉 HTML 标签（若代理返回 HTML）
+           .replace(/^Source:.*$/gm, '')
+           .replace(/^Published Time:.*$/gm, '')
+           .replace(/^Warning:.*$/gm, '');
+      // 2. 若代理返回 HTML，去标签
       if (/<[a-z][\s\S]*>/i.test(s) && s.indexOf('<') < 200) {
         s = s.replace(/<script[\s\S]*?<\/script>/gi, ' ')
              .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -268,9 +290,12 @@
              .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
              .replace(/<[^>]+>/g, ' ');
       }
-      // 常见 Gemini/ChatGPT 分享页的角色词，统一成「用户：/ 助手：」，便于现有适配器识别
-      s = s.replace(/^\s*(You said|You|User|Human|你|我)\s*[:：]?\s*$/gim, '用户：')
-           .replace(/^\s*(Gemini said|ChatGPT said|Assistant|AI|Model|Gemini|ChatGPT)\s*[:：]?\s*$/gim, '助手：');
+      // 3. 关键：r.jina.ai 把角色词加粗，返回形如 **You said:** 内容。
+      //    先去掉 markdown 的 **，再把行首角色标记统一成「用户：/ 助手：」。
+      //    标记后允许直接跟内容（不要求独占一行），这是之前匹配失败的根因。
+      s = s.replace(/\*\*/g, '');
+      s = s.replace(/^[ \t]*(You said|You|User|Human)[ \t]*[:：][ \t]*/gim, '用户：')
+           .replace(/^[ \t]*(Gemini said|ChatGPT said|Assistant|AI|Model|Gemini|ChatGPT)[ \t]*[:：][ \t]*/gim, '助手：');
       s = s.replace(/\n{3,}/g, '\n\n').trim();
       return s;
     }
