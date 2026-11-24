@@ -22,6 +22,36 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { t.classList.add('hidden'); }, 2200);
   }
+  function setLinkStatus(cls, msg) {
+    var el = $('#linkStatus');
+    if (!msg) { el.classList.add('hidden'); el.textContent = ''; return; }
+    el.className = 'link-status ' + cls;
+    el.innerHTML = msg;
+  }
+
+  /* ---------- 从分享链接读取对话 ---------- */
+  function doFetchLink() {
+    var raw = $('#linkInput').value.trim();
+    if (!raw) { toast('先粘贴一个分享链接'); return; }
+    var btn = $('#fetchLinkBtn');
+    btn.disabled = true; btn.textContent = '读取中…';
+    setLinkStatus('loading', '正在读取分享链接，正在尝试通道…（可能需要几秒）');
+    if (!window.LinkFetch) { setLinkStatus('err', '链接读取模块没加载成功，请刷新页面重试'); btn.disabled = false; btn.textContent = '读取链接'; return; }
+    window.LinkFetch.fetchLink(raw, function (name) {
+      setLinkStatus('loading', '正在读取… 当前通道：<b>' + esc(name) + '</b>（失败会自动换下一个）');
+    }).then(function (res) {
+      $('#rawInput').value = res.text;
+      previewConv = null; $('#previewPanel').classList.add('hidden');
+      updateAutoDetect();
+      setLinkStatus('ok', '✅ 读到了对话文本（' + res.text.length + ' 字，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
+      toast('读取成功，已填入下方');
+    }).catch(function (e) {
+      setLinkStatus('err', '❌ ' + esc(e.message || '读取失败'));
+      toast('读取失败，详见提示');
+    }).finally(function () {
+      btn.disabled = false; btn.textContent = '读取链接';
+    });
+  }
   function goto(view) {
     $$('.nav-item').forEach(function (n) { n.classList.toggle('active', n.dataset.view === view); });
     $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + view); });
@@ -523,6 +553,10 @@
       // 贴了新内容就作废旧预览
       if (previewConv) { previewConv = null; $('#previewPanel').classList.add('hidden'); }
     });
+
+    // 链接读取
+    $('#fetchLinkBtn').addEventListener('click', doFetchLink);
+    $('#linkInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doFetchLink(); });
 
     $('#fileInput').addEventListener('change', function (e) {
       var f = e.target.files[0]; if (!f) return;
