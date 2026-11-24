@@ -207,4 +207,96 @@
     register: register, list: list, parse: parse, autoDetect: autoDetect,
     get: function (id) { return ADAPTERS[id]; }
   };
+
+  /* ============================================================
+   * 链接读取（LinkFetch）：把「分享链接」变成对话文本
+   * ------------------------------------------------------------
+   * 背景：Gemini / ChatGPT 的「分享对话」会生成公开链接（快照），
+   *       任何人拿到链接都能读。纯静态网页跨域直连会被 CORS 拦，
+   *       所以走公共只读代理中转，多个代理依次兜底。
+   * 注意：对话内容会经过第三方代理，敏感内容请用手动复制。
+   * 输出：Promise<string> 清理后的对话纯文本，交给现有适配器解析。
+   * ============================================================ */
+  var LinkFetch = (function () {
+    // 只接受 http(s)，且是我们认识的分享域名（放宽松一点，容忍新域名）
+    function normalizeUrl(raw) {
+      var s = String(raw || '').trim();
+      if (!s) return null;
+      if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+      try { new URL(s); } catch (e) { return null; }
+      return s;
+    }
+
+    function isShareLink(raw) {
+      var s = String(raw || '').trim();
+      return /(g\.co\/gemini\/share|gemini\.google\.com\/(share|app)|chatgpt\.com\/(share|s)\/|share\.gemini\.google)/i.test(s);
+    }
+
+    // 公共只读代理列表：各返回一个 Promise<string>（代理抓到的原始文本）
+    var PROXIES = [
+      {
+        name: 'r.jina.ai',
+        get: function (u) { return fetch('https://r.jina.ai/' + encodeURI(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }); }
+      },
+      {
+        name: 'allorigins',
+        get: function (u) {
+          return fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
+        }
+      },
+      {
+        name: 'codetabs',
+        get: function (u) {
+          return fetch('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u)).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
+        }
+      }
+    ];
+
+    // 把代理返回的 markdown / HTML 粗略清理成对话文本
+    function cleanText(txt) {
+      var s = String(txt || '');
+      // 去掉 jina 的标题/链接元信息行
+      s = s.replace(/^Title:.*$/gm, '')
+           .replace(/^URL Source:.*$/gm, '')
+           .replace(/^Markdown Content:\s*$/gm, '')
+           .replace(/^Source:.*$/gm, '');
+      // 去掉 HTML 标签（若代理返回 HTML）
+      if (/<[a-z][\s\S]*>/i.test(s) && s.indexOf('<') < 200) {
+        s = s.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+             .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+             .replace(/<br\s*\/?>/gi, '\n')
+             .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n')
+             .replace(/<[^>]+>/g, ' ');
+      }
+      // 常见 Gemini/ChatGPT 分享页的角色词，统一成「用户：/ 助手：」，便于现有适配器识别
+      s = s.replace(/^\s*(You said|You|User|Human|你|我)\s*[:：]?\s*$/gim, '用户：')
+           .replace(/^\s*(Gemini said|ChatGPT said|Assistant|AI|Model|Gemini|ChatGPT)\s*[:：]?\s*$/gim, '助手：');
+      s = s.replace(/\n{3,}/g, '\n\n').trim();
+      return s;
+    }
+
+    // 依次尝试代理，返回第一个非空结果；全部失败则抛出可读错误
+    function fetchLink(raw, onProgress) {
+      var url = normalizeUrl(raw);
+      if (!url) return Promise.reject(new Error('链接格式不对，检查一下'));
+      var i = 0, lastErr = null;
+      function next() {
+        if (i >= PROXIES.length) {
+          return Promise.reject(new Error('所有读取通道都失败了。可能原因：网络不通、链接需登录、或对方禁止抓取。请改用手动复制。' + (lastErr ? '（' + lastErr.message + '）' : '')));
+        }
+        var p = PROXIES[i++];
+        if (onProgress) onProgress(p.name);
+        return p.get(url).then(function (txt) {
+          var cleaned = cleanText(txt);
+          if (cleaned.length < 20) throw new Error('读到的内容太短');
+          return { text: cleaned, via: p.name, url: url };
+        }).catch(function (e) { lastErr = e; return next(); });
+      }
+      return next();
+    }
+
+    return { fetchLink: fetchLink, isShareLink: isShareLink, normalizeUrl: normalizeUrl, cleanText: cleanText, proxies: PROXIES.map(function (p) { return p.name; }) };
+  })();
+
+  global.LinkFetch = LinkFetch;
 })(window);
