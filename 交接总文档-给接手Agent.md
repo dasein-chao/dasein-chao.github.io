@@ -197,9 +197,10 @@
 | 2026-11-24 | 本轮·真根因 | **用户截图实测发现 stripEcho 修错了层**：textarea 里"用户X/助手X"整句重复是**清洗层**问题（sanitizeShare 把 Gemini 正文开头的复述误标成助手）。修 `isEchoOfUser()` + `dropEchoPairs()`（sanitize 出口通用后处理，覆盖所有分支）。原始文本与成品文本两种形态解析结果一致 |
 | 2026-11-24 | 本轮·破缓存 | **JS 无版本号导致用户浏览器缓存旧代码，"改了没变化"**。index.html 的 4 script + 1 link 全加 `?v=`，并立铁律：每次改 js/css 必升版本号 |
 | 2026-11-24 | 本轮·外壳 | **读到网页导航外壳被当成功**（1446 字全是 Google 页脚）。LinkFetch 新增 `looksLikeConversation()` 质量校验，非对话则换通道/明确报错，不再塞垃圾进框。版本号升至 20261124d |
+| 2026-11-24 | 本轮·DS 分享链接 | **用户反馈"DS 分享链接完全不行"**：r.jina.ai 抓 DS 分享页只渲染出联网搜索外壳（`Found 16 web pages` + `![Image N]` + `cdn.deepseek.com/site-icons/...` 图标网址），旧 `looksLikeConversation()` 见 URL 行多就判失败、旧 `cleanLine()` 不认这些噪音。本轮：① `cleanLine()` 剥掉 DS 外壳四类噪音 + 搜索自述句；② `LinkFetch.cleanText()` 出口逐行过 `cleanLine()`；③ `looksLikeConversation()` 放宽——有 1 句长正文就"猜一下"交出去，只有纯空壳才拒；④ `auto.detect()` 不再拿正文里的"我"当角色信号（修无标记对话被塞进 1 条的 bug）；⑤ DS 域名纳入 `isShareLink()`；⑥ DS 失败统一给可执行的手动复制提示；⑦ 整理格式清空时给明确提示而非"已整理"。**已在真实页面(headless Chromium+CDP)点击验证**：纯外壳→提示手动复制；外壳+正文→剥壳读入、预览分出「用户/AI答」4 段、无图标 URL 残留。版本号升至 20261124e / 20261124e1 |
 
 ---
 
 ## 9. 一句话总结
 
-> 零依赖静态网页，把 LLM 辩论对话转成可复习卡片，已上线 GitHub Pages。核心设计：导入适配层 + 本地规则分析 + 人工润色 + 复习，守住"零门槛、可复用、半自动"。分享链接读取（LinkFetch）已修复角色清洗 bug，r.jina.ai 读真实 Gemini 链接经用户截图证实可行，工具内 fetch 全流程待用户回报。接手沟通按第 3 节。最实质欠账是"详细题目"。
+> 零依赖静态网页，把 LLM 辩论对话转成可复习卡片，已上线 GitHub Pages。核心设计：导入适配层 + 本地规则分析 + 人工润色 + 复习，守住"零门槛、可复用、半自动"。分享链接读取（LinkFetch）支持 Gemini/ChatGPT/DeepSeek；Gemini 读真实链接经用户截图证实可行；DS 分享页常只被代理抓到联网搜索外壳，已做剥壳 + 宽松猜测，读不出则明确引导手动复制（已真实页面点击验证）。接手沟通按第 3 节。最实质欠账是"详细题目"。**铁律复核：每次改 js/css 必升 index.html 资源版本号，否则用户浏览器缓存旧代码、改了等于没改（已踩过两次）。**
