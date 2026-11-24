@@ -44,7 +44,11 @@
       $('#rawInput').value = Importers.sanitize(res.text);
       previewConv = null; $('#previewPanel').classList.add('hidden');
       updateAutoDetect();
-      setLinkStatus('ok', '✅ 读到了对话文本（' + res.text.length + ' 字，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
+      var isFull = /API/.test(res.via || '');
+      var detail = isFull && res.count
+        ? '完整对话 ' + res.count + ' 条（虚拟滚动看不见的也拿到了）'
+        : res.text.length + ' 字';
+      setLinkStatus('ok', '✅ 读到了对话（' + detail + '，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
       toast('读取成功，已填入下方');
     }).catch(function (e) {
       var orig = $('#linkInput').value.trim();
@@ -55,6 +59,52 @@
       btn.disabled = false; btn.textContent = '读取链接';
     });
   }
+  /* ---------- 导入油猴脚本导出的 JSON 文件 ---------- */
+  function handleExportedFile(data) {
+    if (data.format === 'conversation-bundle') {
+      var convs = (data.conversations || []).filter(function (c) {
+        return c && Array.isArray(c.messages) && c.messages.length;
+      });
+      if (!convs.length) { toast('文件里没有可导入的对话'); return; }
+      var ok = 0, cards = 0;
+      Store.update(function (d) {
+        convs.forEach(function (c) {
+          var conv = Importers.parse('dsjson', c);
+          if (conv.messages.length) {
+            d.conversations.unshift(conv);
+            var made = Analyzer.analyzeLocal(conv);
+            d.cards = made.concat(d.cards);
+            cards += made.length; ok++;
+          }
+        });
+      });
+      state = Store.load(); persist();
+      toast('导入 ' + ok + ' 个对话，生成 ' + cards + ' 张卡片');
+      showImportResult(ok, cards, convs.length);
+    } else {
+      // 单对话：填入输入框 + 直接生成预览
+      var conv = Importers.parse('dsjson', data);
+      if (!conv.messages.length) { toast('文件里没有可导入的对话'); return; }
+      $('#rawInput').value = conv.messages.map(function (m) {
+        return (m.role === 'assistant' ? '助手：' : '用户：') + m.content;
+      }).join('\n\n');
+      updateAutoDetect();
+      previewConv = conv;
+      $('#previewPanel').classList.remove('hidden');
+      renderPreview();
+      toast('已载入 ' + conv.messages.length + ' 条消息，检查角色后点「生成卡片」');
+      $('#previewPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+  function showImportResult(ok, cards, total) {
+    $('#resultModalBody').innerHTML =
+      '<p style="margin-bottom:14px;color:#5b6270">从 DeepSeek 导出文件导入了 <b style="color:#10a37f">' + ok + '</b> / ' + total + ' 个对话，' +
+      '本地规则生成了 <b style="color:#10a37f">' + cards + '</b> 张卡片。</p>' +
+      '<p class="hint">几万个字、几百轮的对话一次性就导完了——这就是虚拟滚动看不见的部分。建议去卡片库把草稿改成你自己的话。</p>';
+    openModal('resultModal');
+  }
+
   function goto(view) {
     $$('.nav-item').forEach(function (n) { n.classList.toggle('active', n.dataset.view === view); });
     $$('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + view); });
@@ -581,7 +631,20 @@
       var f = e.target.files[0]; if (!f) return;
       var r = new FileReader();
       r.onload = function () {
-        $('#rawInput').value = Importers.sanitize(r.result); updateAutoDetect();
+        var text = String(r.result || '');
+        var trimmed = text.trim();
+        // 检测是不是「顿悟卡片导出器」生成的 JSON（单对话 / 全量包）
+        var data = null;
+        if (trimmed && (trimmed[0] === '{' || trimmed[0] === '[')) {
+          try { data = JSON.parse(trimmed); } catch (e2) { data = null; }
+        }
+        if (data && data.app === 'insight-cards' && (data.format === 'conversation' || data.format === 'conversation-bundle')) {
+          handleExportedFile(data);
+          e.target.value = '';
+          return;
+        }
+        // 普通文本文件：走原来的清洗路径
+        $('#rawInput').value = Importers.sanitize(text); updateAutoDetect();
         previewConv = null; $('#previewPanel').classList.add('hidden');
         toast('文件已载入并整理格式，点「看识别预览」检查');
       };
