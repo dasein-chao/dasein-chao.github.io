@@ -12,7 +12,7 @@
 | 项目名 | 顿悟卡片 / insight-cards |
 | 本地路径 | `/workspace/insight-cards` |
 | 形态 | **纯静态网页**，双击 `index.html` 即可用，无需安装、无需联网、无需填 key |
-| 正式网址 | `https://dasein-chao.github.io/insight-cards`（GitHub Pages，2026-11-22 上线） |
+| 正式网址 | `https://dasein-chao.github.io/`（GitHub Pages 用户主页仓库，最简网址）；旧路径 `/insight-cards/` 有跳转页兼容 |
 | 备用网址 | WorkBuddy 平台发布链接（带 `workbuddy.host` 域名，用户嫌弃它"自报家门"） |
 | GitHub 仓库 | `dasein-chao/insight-cards`，public，main 分支，9 个文件已推送 |
 | Git 状态 | 已 `git init`，有本地提交；线上文件是通过 API 上传的（不是 git push） |
@@ -139,7 +139,8 @@ insight-cards/
 
 - [ ] 本地分析是**规则提取不是语义理解**，关键词偶有碎片（如把"作用域"切过）。定位是"草稿生成器"，靠用户润色补足。
 - [ ] `examples/` 里的二维码图片指向**旧的 WorkBuddy 链接**，现在有了正式网址，应重新生成或删掉。
-- [ ] README 里若还写着旧链接，需更新为 `https://dasein-chao.github.io/insight-cards`。
+- [x] 网址已简化为 `https://dasein-chao.github.io/`（2026-11-24，仓库改名为主页仓库）。
+- [ ] **所有开发改动必须在 GitHub 留痕**（用户明确要求）：本地改完 → git commit → token 同步 GitHub → 重打包 zip，三步缺一不可。
 - [ ] 用 token 通过 API 上传文件时，仓库里没有 `.gitignore`，有些本地文件可能被误传（已跳过 `.git`）。
 - [ ] GitHub token 是临时的（`/tmp/gh_token.txt`），以后要改仓库内容需重新授权或用用户自己的 token。
 
