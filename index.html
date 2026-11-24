@@ -143,7 +143,7 @@
       <!-- 通用粘贴 -->
       <div class="panel" id="pastePanel">
         <div class="panel-title"><span class="step-dot">1</span> 粘贴对话内容 <span class="auto-tag" id="autoTag"></span></div>
-        <textarea class="input textarea big" id="rawInput" rows="11" placeholder="把对话原样贴进来就行——直接全选复制、粘贴即可，不用管格式。点下面的「看识别预览」就能看到它怎么分的。"></textarea>
+        <textarea class="input textarea big" id="rawInput" rows="11" placeholder="把对话原样贴进来就行——直接全选复制、粘贴即可。带 #、网址、反引号的网页复制文本会自动整理干净。点「看识别预览」可检查它怎么分的。"></textarea>
         <div class="paste-help">
           <label class="inline-check">
             <input type="checkbox" id="useAI"> 用 AI 深度归纳（需在设置里填 key，不填则自动用本地分析）
@@ -152,6 +152,7 @@
             <input type="file" id="fileInput" accept=".txt,.json,.md">
             或选择文件导入
           </span>
+          <span class="file-btn tidy-btn" id="tidyBtnWrap" title="去掉 #、网址、反引号等符号，只留干净对话">✨ 整理格式</span>
         </div>
         <details class="advanced" id="advancedBox">
           <summary>高级：来源格式不对？手动选 / 自定义（一般不用管）</summary>
