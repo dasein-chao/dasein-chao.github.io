@@ -23,10 +23,10 @@
 |---|---|---|
 | `index.html` | 单页应用骨架；4 个 view（导入/卡片库/复习/设置）+ 教程 + 识别预览 | 完成。含链接导入面板、教程、预览、编辑弹窗、复习、设置 |
 | `css/style.css` | 全部样式；品牌色变量在 `:root` | 完成。含链接面板、教程、预览、卡片、弹窗响应式样式 |
-| `js/importers.js` | **导入适配层**（核心扩展点）。`register()` 注册适配器；`autoDetect()` 打分选最优 | 完成。内置 5 个适配器：auto / plain / chatgpt / json / manual。**本轮新增 `LinkFetch` 模块**（见第 4 节） |
+| `js/importers.js` | **导入适配层**（核心扩展点）。`register()` 注册适配器；`autoDetect()` 打分选最优 | 完成。内置 5 个适配器：auto / plain / chatgpt / json / manual。含 `LinkFetch` 模块 + **`sanitize()` 统一清洗层**（见第 4 节） |
 | `js/analyzer.js` | 分析引擎。`analyzeLocal()` 规则提取；`analyzeAI()` 可选 LLM 增强；PRESETS 模型预设 | 完成但为**规则提取非语义理解**——关键词偶有碎片，定位是"草稿生成器" |
 | `js/store.js` | localStorage 持久化 + 备份导入导出 | 完成 |
-| `js/app.js` | 交互总控；事件绑定、状态机、渲染 | 完成。**本轮新增 `doFetchLink()` + `setLinkStatus()`** |
+| `js/app.js` | 交互总控；事件绑定、状态机、渲染 | 完成。含 `doFetchLink()` + `setLinkStatus()` + **`#tidyBtnWrap` 整理格式按钮**，所有导入路径在解析前调 `sanitize()` |
 | `examples/示例对话-闭包.txt` | 演示数据 | 完成 |
 | `README.md` | 面向终端用户的使用说明 | 完成 |
 | `HANDOFF.md` | 早期交接文档（大白话版，内容已并入本文件） | 保留 |
@@ -91,6 +91,19 @@
 - **新增失败兜底链接**：读取失败时状态栏给出 `https://r.jina.ai/<原链接>` 的可点链接——用户可自己打开、全选复制、贴进粘贴框。这条手动路永远可用，是最终保底。
 - **关于 VPN 的澄清**：用户一度认为功能"受限于 VPN"。事实是——r.jina.ai 是**服务端渲染**（它自己的服务器去访问 Google），用户浏览器只需能访问 r.jina.ai 即可，不需要直连 Google。开发沙箱访问不了 Google/r.jina.ai 只是**我这边**的测试限制，与用户工具和最终功能无关。接手时不要再把网络问题归咎于用户 VPN。
 
+### 2026-11-24 再追加：统一清洗层（sanitize）★ 解决"丑 + 算法污染"
+用户把 r.jina.ai 文本**手动粘贴**（没走链接读取），截图显示粘贴框里一堆 `Final URL:` / `###### You said` / `##### 标题` / 反引号 / `*` 列表 —— 用户担心两点：① 界面丑；② 噪音污染算法（卡点/顿悟/总结/出题）。**这个担心成立**：手动粘贴路径此前完全没清洗，噪音原样喂给 analyzer。
+
+- **关键发现**：r.jina.ai 对 Gemini 的真实渲染格式与我先前 mock 的不同 —— 角色是 `###### You said 内容`（markdown 6 级标题 + 空格，**无冒号**），助手回答用 `#####` 标题 / `2.` 编号铺开、**没有 `Gemini said` 标记**。旧正则一个都匹配不上。
+- **新增 `Importers.sanitize(raw)`**（importers.js，在 `global.Importers` 定义处上方）：三条导入路径共用。
+  - `cleanLine()` 丢元信息行与裸 URL、去 markdown `#`/加粗/反引号/无序列表符（保留数字编号）。
+  - `matchRole()` 识别 `You said`/`Gemini said`/`用户：`等（支持空格无冒号）。
+  - `isShareRender()` 判定分享渲染文本；`sanitizeShare()` 以 `You said` 为用户轮分隔，**其后第一段内容自动标 `助手：`**（因渲染不标 Gemini said），后续并入当前角色。
+  - 普通文本只清噪音、不改结构（幂等、安全）。
+- **接入点**（app.js）：`updateAutoDetect()`、`buildPreviewConv()`、链接读取成功、`#fileInput` 载入 —— 全部在解析/检测前先 sanitize；新增 `#tidyBtnWrap`「整理格式」按钮，点击把 textarea 噪音文本**原地清洗回填**并 toast 字数变化（278→174 字实测）。
+- **实测**：截图同款噪音文本 → 清洗后 4 段干净对话、角色全对 → 生成 2 张卡片，关键词为 `warning/error/编译/区别` 等有效词（不再有 `Wunused-result` 之类碎片）；浏览器端到端无报错。
+- **设计意图**：所有清洗都发生在**解析之前**，因此 analyzer.js / 卡片算法看到的永远是干净文本——这是保护"卡点/顿悟/出题"质量的关键不变量，接手时勿绕过 sanitize 直接把 raw 喂给 parse。
+
 ### 已验证
 - mock 数据链路（按真实截图格式）：分享链接 → 清洗 → autoDetect → 解析出 4 条对话，角色全对、内容完整。
 - 代理兜底：第一个通道失败/超时后自动切第二个成功。
@@ -149,6 +162,7 @@
 | 2026-11-22 | （API 同步） | 交接总文档 v1（全对话脉络 + 欠账清单 + 技能说明） |
 | 2026-11-24 | 本轮 | **LinkFetch 分享链接读取**（3 代理兜底 + 文本清洗 + UI 面板 + 教程）、交接文档改为 developer 口吻 + 模块职责表 + 变更日志 |
 | 2026-11-24 | 本轮·修复 | **修复 LinkFetch 角色清洗 bug**（加粗 `**You said:**` 匹配失败 → 角色全丢）；加 20s 请求超时自动切通道；失败时给 `r.jina.ai` 手动兜底链接。r.jina.ai 读真实链接已由用户截图证实可行 |
+| 2026-11-24 | 本轮·清洗 | **新增统一清洗层 `sanitize()`**：解决用户手动粘贴 r.jina.ai 文本时 `Final URL:`/`######`/反引号/列表符等噪音（丑 + 污染算法）。三条导入路径解析前统一清洗；加「整理格式」按钮原地清理 textarea。实测噪音文本 → 干净对话 → 2 张卡片无污染 |
 
 ---
 
