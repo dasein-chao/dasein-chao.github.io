@@ -52,6 +52,27 @@
       .filter(function (s) { return s.length >= 4; });
   }
 
+  // AI 回答开头常先复述用户的问题（"你问的是……""你想了解……"）。
+  // 这类句子不是知识点，且会切出「看不懂/懂报错」之类碎片挤掉真术语、让填空题挖在复述上。
+  // 这里在喂给分析前把它们剥掉，保留后面的实质内容。
+  var ECHO_RE = /^(好的[，,]?\s*)?(你问的是|你刚才问(的是)?|你想问(的是)?|你想了解(的是)?|你的问题是|关于你(提到|说|问)(的)?问题?|针对你(的)?问题|你问到|你提到)[：:]?\s*/;
+  function stripEcho(answer, question) {
+    var sents = splitSentences(answer);
+    if (!sents.length) return String(answer || '');
+    var qCore = String(question || '').trim().split('\n')[0].replace(/[。！？!?]+$/, '');
+    var out = [];
+    sents.forEach(function (s) {
+      var m = s.match(ECHO_RE);
+      if (!m) { out.push(s); return; }
+      var rest = s.slice(m[0].length);
+      // 引导词后面若跟着用户原话，一并去掉
+      if (qCore && rest.indexOf(qCore) === 0) rest = rest.slice(qCore.length).replace(/^[，,。：:\s]+/, '');
+      // 剥完还有实质内容（>=8字）就保留，否则整句丢弃
+      if (rest.length >= 8) out.push(rest);
+    });
+    return out.join(' ') || String(answer || '');
+  }
+
   function scoreSentence(s) {
     var sc = 0;
     INSIGHT_PATTERNS.forEach(function (re, i) { if (re.test(s)) sc += (i === 0 || i === 1 ? 3 : 2); });
@@ -174,7 +195,7 @@
     var blocks = toBlocks(conversation.messages);
     var cards = blocks.map(function (b) {
       var q = b.question.trim();
-      var a = b.answer.trim();
+      var a = stripEcho(b.answer, q).trim();
       var insight = extractInsight(a, 3);
       var keywords = extractKeywords((a + ' ' + q).slice(0, 1200), 5);
       var confuseHit = countHits(q, CONFUSE_WORDS);
