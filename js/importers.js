@@ -86,10 +86,12 @@
     detect: function (raw) {
       var s = String(raw || '');
       var score = 0;
-      if (/(用户|user|我|助手|assistant|ai|deepseek|glm)/i.test(s)) score += 3;
-      if (/(^|\n)\s*(用户|助手|user|assistant|ai)\s*[:：]/im.test(s)) score += 5;
+      // 只看「真正的角色标记行」，不要拿正文里的「我/你」当信号——
+      // 否则 DS 剥壳后无标记的整段对话会被误判成 auto，全部塞进一条消息。
       var lines = s.split('\n');
       var marked = lines.filter(function (l) { return detectRoleLine(l); }).length;
+      if (marked > 0) score += 3;
+      if (/(^|\n)\s*(用户|助手|user|assistant|ai|deepseek|gemini)\s*[:：]/im.test(s)) score += 5;
       score += Math.min(marked, 10);
       return score;
     },
@@ -217,6 +219,20 @@
     if (/^\s*(https?:\/\/|www\.)\S+\s*$/i.test(t)) return null;
     // markdown 水平分隔线
     if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(t)) return null;
+    /* --- r.jina.ai / DeepSeek 分享页：联网搜索结果外壳噪音（DS 分享读不出的根因） --- */
+    // "Found 16 web pages" / "Found 8 results" / "Found 5 sources"
+    if (/^\s*Found\s+\d+\s+(web\s*pages?|results?|sources?|websites?)\b/i.test(t)) return null;
+    // r.jina.ai 图片占位：![Image 1] 或 ![Image 1](url)，可带前导空格
+    if (/^\s*!\[[^\]]*\]\s*(\([^)]*\))?\s*$/.test(t)) return null;
+    // 括号包裹的裸 URL（DeepSeek 来源图标多为这种）：(https://cdn.deepseek.com/...)
+    if (/^\s*\(\s*https?:\/\/[^\s)]+\s*\)\s*$/i.test(t)) return null;
+    // 任意位置的 DeepSeek site-icons 图标 URL：抹掉，整行若只剩它就丢弃
+    if (/cdn\.deepseek\.com\/site-icons/i.test(t)) {
+      t = t.replace(/\(?\s*https?:\/\/[^\s)]*site-icons[^\s)]*\s*\)?/gi, '').trim();
+      if (!t) return null;
+    }
+    // DS 联网回答的「搜索自述」过渡句：不是知识点，且会污染标题/卡点，整行丢弃
+    if (/^\s*(搜索结果显示|搜索到的结果|以下是搜索结果|根据搜索结果|我搜索了|为了全面获取信息|我需要进一步(筛选|查找|获取|搜索|整理))/i.test(t) && t.length < 90) return null;
     // 去 markdown 标题 # 前缀、加粗符、反引号；去无序列表符号（保留数字编号）
     t = t.replace(/^\s*#{1,6}\s+/, '')
          .replace(/\*\*/g, '').replace(/__/g, '')
@@ -372,7 +388,7 @@
 
     function isShareLink(raw) {
       var s = String(raw || '').trim();
-      return /(g\.co\/gemini\/share|gemini\.google\.com\/(share|app)|chatgpt\.com\/(share|s)\/|share\.gemini\.google)/i.test(s);
+      return /(g\.co\/gemini\/share|gemini\.google\.com\/(share|app)|chatgpt\.com\/(share|s)\/|share\.gemini\.google|chat\.deepseek\.com\/(share|s)\/|deepseek\.com\/share)/i.test(s);
     }
 
     // 单个请求超时（毫秒）：超时就换下一个通道，避免一直卡住
@@ -435,41 +451,43 @@
       }
       // 3. 关键：r.jina.ai 把角色词加粗，返回形如 **You said:** 内容。
       //    先去掉 markdown 的 **，再把行首角色标记统一成「用户：/ 助手：」。
-      //    标记后允许直接跟内容（不要求独占一行），这是之前匹配失败的根因。
       s = s.replace(/\*\*/g, '');
       s = s.replace(/^[ \t]*(You said|You|User|Human)[ \t]*[:：][ \t]*/gim, '用户：')
            .replace(/^[ \t]*(Gemini said|ChatGPT said|Assistant|AI|Model|Gemini|ChatGPT)[ \t]*[:：][ \t]*/gim, '助手：');
+      // 4. 逐行剥离平台外壳：Found N web pages / ![Image N] / (图标网址) / site-icons 等
+      //    复用统一清洗层的 cleanLine，DS 分享读不出的根因就在这里。
+      s = s.split('\n').map(function (l) { return cleanLine(l); })
+           .filter(function (l) { return l !== null; }).join('\n');
       s = s.replace(/\n{3,}/g, '\n\n').trim();
       return s;
     }
 
-    // 判断读回来的文本是不是「真对话」，还是网页导航外壳（登录页/落地页/Cookie 提示）。
-    // Gemini 分享链接若需登录或失效，r.jina.ai 只会读到页眉页脚：
-    //   [About Gemini] / (https://support.google.com/...) / [Subscriptions] ...
-    // 这种文本没有对话角色标记、满是 URL 和短标签行，必须拦下，不能塞进框里假装成功。
+    // 判断读回来的文本是不是「真对话」，还是纯网页导航外壳（登录页/落地页/Cookie 提示）。
+    // 原则：宁可「猜一下」把正文交出去让用户核对，也不要动辄判失败。
+    // 真正的空壳是：没有角色标记 + 全是短标签/网址 + 几乎没有一句完整正文。
     function looksLikeConversation(txt) {
       var s = String(txt || '');
-      // 1) 强信号：有明确的对话角色标记
-      if (/(You said|Gemini said|ChatGPT said|^用户[:：]|^助手[:：]|^我[:：]|^AI[:：])/im.test(s)) return true;
-      // 2) 弱信号统计
+      // 1) 强信号：有明确的对话角色标记（含 DS 的「用户 / DeepSeek / 助手」等）
+      if (/(You said|Gemini said|ChatGPT said|^用户[:：]|^助手[:：]|^我[:：]|^AI[:：]|^DeepSeek[:：]|^深度求索[:：])/im.test(s)) return true;
       var lines = s.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
       if (!lines.length) return false;
-      var urlLines = 0, bracketLines = 0, longLines = 0;
+      var urlLines = 0, bracketLines = 0, longLines = 0, buildingLines = 0;
       lines.forEach(function (l) {
-        // 以 URL 开头（可带括号），或整行基本就是个网址 → 外壳
         if (/^[\(\[]?\s*https?:\/\/\S+[\)\]]?\s*$/i.test(l)) urlLines++;
-        // [About Gemini] 这类方括号短标签 → 外壳
         if (/^\[[^\]]{1,40}\]$/.test(l)) bracketLines++;
-        // 有实质正文（>=15 个中英文字，且不是纯网址）
+        // 一句像样的正文：>=12 个中英文字（放宽，DS 回答首行可能较短）
         var wordChars = l.replace(/[^\u4e00-\u9fa5A-Za-z]/g, '').length;
-        if (wordChars >= 15 && !/https?:\/\//i.test(l)) longLines++;
+        if (wordChars >= 12 && !/https?:\/\//i.test(l)) longLines++;
+        // 还在生成/展开中的句子（>=6 字），作为弱证据
+        else if (wordChars >= 6 && !/https?:\/\//i.test(l)) buildingLines++;
       });
-      // 网页外壳特征：URL 行或方括号标签行占比高，且几乎没有长正文
       var shellLines = urlLines + bracketLines;
-      if (longLines < 2 && shellLines >= 3) return false;
-      if (shellLines / lines.length > 0.4 && longLines < 3) return false;
-      // 至少得有几行像样的正文
-      return longLines >= 2;
+      // 有实质正文（哪怕只有 1 句长的）→ 猜它是对话，交出去让用户核对
+      if (longLines >= 1) return true;
+      // 没有长句但有一堆半截句，且外壳不算离谱 → 也猜一下
+      if (buildingLines >= 3 && shellLines / lines.length < 0.5) return true;
+      // 剩下的：满屏网址/短标签、几乎没有正文 → 判定为空壳
+      return false;
     }
 
     // 依次尝试代理，返回第一个非空结果；全部失败则抛出可读错误
@@ -479,10 +497,18 @@
       var i = 0, lastErr = null;
       function next() {
         if (i >= PROXIES.length) {
-          var hint = /网页导航/.test(lastErr && lastErr.message)
-            ? '读到的都是网页导航，不是对话——这个分享链接多半需要登录或已失效。请在 Gemini 里重新生成分享链接，或改用手动复制对话文字。'
-            : '所有读取通道都失败了。可能原因：网络不通、链接需登录、或对方禁止抓取。请改用手动复制。';
-          return Promise.reject(new Error(hint + (lastErr ? '（' + lastErr.message + '）' : '')));
+          var lastMsg = (lastErr && lastErr.message) || '';
+          var hint;
+          if (/deepseek/i.test(url)) {
+            // DS 分享页常只被代理渲染出联网搜索外壳，剥壳后就没正文了——
+            // 不管报「太短」还是「空壳」，都给同一个明确、可执行的提示。
+            hint = 'DeepSeek 这个链接只抓到了联网搜索的外壳，没抓到对话正文（分享页多需登录，代理只能渲染出搜索结果）。最稳的办法：在 DeepSeek 里全选复制对话文字，贴到下面的框里，点「整理格式」。';
+          } else if (/网页导航|空壳|太短/.test(lastMsg)) {
+            hint = '读到的都是网页导航，不是对话——这个分享链接多半需要登录或已失效。请重新生成分享链接，或改用手动复制对话文字。';
+          } else {
+            hint = '所有读取通道都失败了。可能原因：网络不通、链接需登录、或对方禁止抓取。请改用手动复制。';
+          }
+          return Promise.reject(new Error(hint + (lastErr ? '（' + lastMsg + '）' : '')));
         }
         var p = PROXIES[i++];
         if (onProgress) onProgress(p.name);
@@ -499,7 +525,7 @@
       return next();
     }
 
-    return { fetchLink: fetchLink, isShareLink: isShareLink, normalizeUrl: normalizeUrl, cleanText: cleanText, proxies: PROXIES.map(function (p) { return p.name; }) };
+    return { fetchLink: fetchLink, isShareLink: isShareLink, normalizeUrl: normalizeUrl, cleanText: cleanText, looksLikeConversation: looksLikeConversation, proxies: PROXIES.map(function (p) { return p.name; }) };
   })();
 
   global.LinkFetch = LinkFetch;
