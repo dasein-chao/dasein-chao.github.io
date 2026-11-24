@@ -46,7 +46,9 @@
       setLinkStatus('ok', '✅ 读到了对话文本（' + res.text.length + ' 字，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
       toast('读取成功，已填入下方');
     }).catch(function (e) {
-      setLinkStatus('err', '❌ ' + esc(e.message || '读取失败'));
+      var orig = $('#linkInput').value.trim();
+      var fallback = orig ? ('<br>手动兜底：自己打开 <a href="https://r.jina.ai/' + esc(orig) + '" target="_blank" rel="noopener">这个阅读版网址</a>，全选复制文字，贴到下面的框里。') : '';
+      setLinkStatus('err', '❌ ' + esc(e.message || '读取失败') + fallback);
       toast('读取失败，详见提示');
     }).finally(function () {
       btn.disabled = false; btn.textContent = '读取链接';
