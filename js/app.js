@@ -40,7 +40,8 @@
     window.LinkFetch.fetchLink(raw, function (name) {
       setLinkStatus('loading', '正在读取… 当前通道：<b>' + esc(name) + '</b>（失败会自动换下一个）');
     }).then(function (res) {
-      $('#rawInput').value = res.text;
+      // 链接读到的文本同样过一遍统一清洗（去残留 markdown 噪音）
+      $('#rawInput').value = Importers.sanitize(res.text);
       previewConv = null; $('#previewPanel').classList.add('hidden');
       updateAutoDetect();
       setLinkStatus('ok', '✅ 读到了对话文本（' + res.text.length + ' 字，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
@@ -95,7 +96,7 @@
   /* ---------- 自动识别提示 ---------- */
   function updateAutoDetect() {
     if (selectedSource !== 'auto') { $('#autoTag').textContent = ''; return; }
-    var raw = $('#rawInput').value.trim();
+    var raw = Importers.sanitize($('#rawInput').value.trim());
     if (raw.length < 10) { $('#autoTag').textContent = ''; return; }
     var guess = Importers.autoDetect(raw);
     var a = Importers.get(guess);
@@ -111,7 +112,8 @@
         answer: $('#manualAnswer').value
       });
     }
-    var raw = $('#rawInput').value.trim();
+    // ★ 统一清洗：粘贴/文件导入的文本先去掉 markdown 噪音，再解析
+    var raw = Importers.sanitize($('#rawInput').value.trim());
     if (!raw) { toast('先粘贴对话内容'); return null; }
     var src = selectedSource === 'auto' ? Importers.autoDetect(raw) : selectedSource;
     try {
@@ -556,6 +558,17 @@
       if (previewConv) { previewConv = null; $('#previewPanel').classList.add('hidden'); }
     });
 
+    // 手动整理格式：把 textarea 里的噪音文本原地清洗成干净对话
+    $('#tidyBtnWrap').addEventListener('click', function () {
+      var before = $('#rawInput').value;
+      if (!before.trim()) { toast('先粘贴对话内容'); return; }
+      var after = Importers.sanitize(before);
+      if (after === before.trim()) { toast('格式已经很干净了，不用整理'); return; }
+      $('#rawInput').value = after; updateAutoDetect();
+      previewConv = null; $('#previewPanel').classList.add('hidden');
+      toast('已整理：去掉网址/#号/反引号等噪音（' + before.length + ' → ' + after.length + ' 字）');
+    });
+
     // 链接读取
     $('#fetchLinkBtn').addEventListener('click', doFetchLink);
     $('#linkInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doFetchLink(); });
@@ -564,9 +577,9 @@
       var f = e.target.files[0]; if (!f) return;
       var r = new FileReader();
       r.onload = function () {
-        $('#rawInput').value = r.result; updateAutoDetect();
+        $('#rawInput').value = Importers.sanitize(r.result); updateAutoDetect();
         previewConv = null; $('#previewPanel').classList.add('hidden');
-        toast('文件已载入，点「看识别预览」检查');
+        toast('文件已载入并整理格式，点「看识别预览」检查');
       };
       r.readAsText(f);
     });
