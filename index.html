@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>顿悟卡片 · 把想通的那一刻存下来</title>
-<link rel="stylesheet" href="css/style.css?v=20261124e">
+<link rel="stylesheet" href="css/style.css?v=20261125f">
 </head>
 <body>
 
@@ -134,9 +134,22 @@
           <button class="btn secondary" id="fetchLinkBtn">读取链接</button>
         </div>
         <div class="link-status hidden" id="linkStatus"></div>
+        <details class="link-note" id="dsHelper">
+          <summary>DeepSeek 对话很多轮 / 读不全？用这个一键导出器（强烈推荐）</summary>
+          <p style="margin:8px 0">DeepSeek 页面用了「虚拟滚动」，滚过去的历史消息会从页面上消失，<b>任何读网页的办法都只能拿到眼前一小段</b>——所以分享链接经常读不全。要一次拿到几百轮的完整对话，用一个小脚本最靠谱：</p>
+          <ol style="margin:8px 0;padding-left:20px;color:#5b6270">
+            <li>浏览器装 <b>Tampermonkey（油猴）</b>插件（应用商店搜「Tampermonkey」）。</li>
+            <li>点这里安装导出脚本：<a href="extension/dasein-ds-export.user.js" target="_blank" rel="noopener">🐳 顿悟卡片·DeepSeek 导出器（点开后复制全部代码，在油猴里「新建脚本」粘贴保存）</a>。</li>
+            <li>打开你的 DeepSeek 对话页或分享页，右下角会出现「导出到顿悟卡片」面板：
+              <br>· <b>复制当前对话</b> → 回到本网站粘贴到下面的框；
+              <br>· <b>下载当前对话 JSON</b> → 本网站「选择文件导入」自动识别；
+              <br>· <b>导出全部会话</b> → 几百个对话一次性打包导入。</li>
+          </ol>
+          <p style="margin:8px 0;color:#8a90a0">脚本只在你的浏览器里、对你自己的 DeepSeek 页面操作，不经过第三方服务器，也不会上传。手机浏览器若装不了油猴，请在电脑上操作，或手动复制。</p>
+        </details>
         <details class="link-note">
           <summary>关于隐私和失败怎么办（点开看）</summary>
-          <p>读取时对话内容会经过公共中转服务，<b>敏感内容请改用手动复制</b>。如果读取失败（链接需登录、网络不通、或对方禁止抓取），工具会自动换几个通道再试；都不行就把链接用浏览器打开、全选复制文本，贴到下面的框里，效果一样。</p>
+          <p>读取时对话内容会经过公共中转服务，<b>敏感内容请改用手动复制</b>。如果读取失败（链接需登录、网络不通、或对方禁止抓取），工具会自动换几个通道再试；都不行就把链接用浏览器打开、全选复制文本，贴到下面的框里，效果一样。DeepSeek 分享链接会先尝试走它自己的公开接口读完整对话，接口不稳时请改用上面的导出器。</p>
         </details>
       </div>
 
@@ -378,9 +391,9 @@
 
 <div class="toast hidden" id="toast"></div>
 
-<script src="js/importers.js?v=20261124e1"></script>
-<script src="js/analyzer.js?v=20261124e"></script>
-<script src="js/store.js?v=20261124e"></script>
-<script src="js/app.js?v=20261124e1"></script>
+<script src="js/importers.js?v=20261125f"></script>
+<script src="js/analyzer.js?v=20261125f"></script>
+<script src="js/store.js?v=20261125f"></script>
+<script src="js/app.js?v=20261125f"></script>
 </body>
 </html>
