@@ -203,8 +203,90 @@
     return best;
   }
 
+  /* ============================================================
+   * 统一清洗层（sanitize）：所有导入路径共用
+   * 把 r.jina.ai / 分享页复制出来的 markdown 噪音清掉，输出干净的
+   * 「用户：/ 助手：」对话文本，再交给解析器和算法。
+   * 目的：① 界面不显示一堆 # 和 URL（美观）② 噪音不污染卡点/顿悟/关键词算法。
+   * ============================================================ */
+  function cleanLine(line) {
+    var t = String(line || '');
+    // 元信息行整行丢弃
+    if (/^\s*(Final URL|Title|URL Source|Source|Published Time|Markdown Content|Warning)\s*[:：]/i.test(t)) return null;
+    // 裸 URL 行丢弃
+    if (/^\s*(https?:\/\/|www\.)\S+\s*$/i.test(t)) return null;
+    // markdown 水平分隔线
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(t)) return null;
+    // 去 markdown 标题 # 前缀、加粗符、反引号；去无序列表符号（保留数字编号）
+    t = t.replace(/^\s*#{1,6}\s+/, '')
+         .replace(/\*\*/g, '').replace(/__/g, '')
+         .replace(/`/g, '')
+         .replace(/^\s*[-*+]\s+/, '');
+    return t;
+  }
+
+  // 识别行首角色标记，输出 {role, content}
+  function matchRole(line) {
+    var s = String(line || '').trim();
+    var m = s.match(/^(You said|You asked|User said|You|User|Human)\b\s*[:：]?\s+(.+)$/i);
+    if (m) return { role: 'user', content: m[2].trim() };
+    m = s.match(/^(Gemini said|ChatGPT said|Assistant said|Assistant|AI|Model|Bot|Gemini|ChatGPT)\b\s*[:：]?\s+(.+)$/i);
+    if (m) return { role: 'assistant', content: m[2].trim() };
+    m = s.match(/^(用户|我|提问|问)\s*[:：]\s*(.*)$/);
+    if (m) return { role: 'user', content: m[2].trim() };
+    m = s.match(/^(助手|回答|答)\s*[:：]\s*(.*)$/i);
+    if (m) return { role: 'assistant', content: m[2].trim() };
+    if (/^(用户|我|user|human)$/i.test(s)) return { role: 'user', content: '' };
+    if (/^(助手|assistant|ai|model|gemini|chatgpt)$/i.test(s)) return { role: 'assistant', content: '' };
+    return null;
+  }
+
+  function isShareRender(text) {
+    return /(You said|Gemini said|Final URL\s*:|Markdown Content\s*:|URL Source\s*:|^\s*#{1,6}\s)/im.test(String(text || ''));
+  }
+
+  // 分享页渲染文本：以 You said 为用户轮分隔，其后的内容归助手
+  function sanitizeShare(text) {
+    var lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    var out = [], state = 'none';
+    lines.forEach(function (line) {
+      var t = cleanLine(line);
+      if (t === null) return;
+      t = t.trim();
+      if (!t) return;
+      var role = matchRole(t);
+      if (role) {
+        out.push((role.role === 'user' ? '用户：' : '助手：') + role.content);
+        state = role.role;
+      } else if (state === 'user') {
+        // 用户标记后的第一段内容 = 助手回答开始（r.jina.ai 渲染不标 Gemini said）
+        out.push('助手：' + t);
+        state = 'assistant';
+      } else {
+        out.push(t); // 并入当前角色
+      }
+    });
+    return out.join('\n').trim();
+  }
+
+  function sanitize(raw) {
+    var s = String(raw || '');
+    if (!s.trim()) return '';
+    if (isShareRender(s)) return sanitizeShare(s);
+    // 普通文本：只清噪音，保留原有对话结构
+    var lines = s.replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    lines.forEach(function (line) {
+      var t = cleanLine(line);
+      if (t === null) return;
+      out.push(t);
+    });
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   global.Importers = {
     register: register, list: list, parse: parse, autoDetect: autoDetect,
+    sanitize: sanitize,
     get: function (id) { return ADAPTERS[id]; }
   };
 
