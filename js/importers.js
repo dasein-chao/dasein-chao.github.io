@@ -173,6 +173,31 @@
     }
   });
 
+  // DeepSeek 油猴脚本导出的 JSON（dasein-ds-export.user.js）
+  // 单对话：{format:'conversation', title, messages:[{role,content}]}
+  // 全量包：{format:'conversation-bundle', conversations:[{title,messages}]}
+  // parse 只处理单对话；bundle 由 app.js 拆成多个 conv 分别导入。
+  register('dsjson', {
+    name: 'DeepSeek 导出文件',
+    icon: '🐳',
+    desc: '用「顿悟卡片·DeepSeek 导出器」油猴脚本导出的 JSON 文件',
+    detect: function (raw) {
+      var s = typeof raw === 'string' ? raw.trim() : (raw && raw.__jsonText) || '';
+      if (!s || (s[0] !== '{' && s[0] !== '[')) return 0;
+      if (/"format"\s*:\s*"(conversation|conversation-bundle)"/.test(s) && /"app"\s*:\s*"insight-cards"/.test(s)) return 20;
+      return 0;
+    },
+    parse: function (raw) {
+      var data = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+      var msgs = (data.messages || []).filter(function (m) {
+        return m && m.content && String(m.content).trim();
+      }).map(function (m) {
+        return { role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content).trim() };
+      });
+      return wrapMessages(msgs, 'deepseek', data.title || guessTitle(msgs));
+    }
+  });
+
   // 手动：两段式输入（最稳，适合任何来源）
   register('manual', {
     name: '手动两段',
@@ -490,10 +515,92 @@
       return false;
     }
 
+    // ---- DeepSeek 分享链接：走公开 API 读全量（而不是读被虚拟滚动藏住的页面）----
+    // 分享页正文不在 DOM 里，读页面只能拿到联网搜索外壳。真正的数据在：
+    //   GET https://chat.deepseek.com/api/v0/share/content?share_id=xxx
+    // 匿名可取，但该 API 无 CORS 头、服务器直连会被风控，所以只能经 CORS 代理。
+    // 代理不稳（偶发 520/522），故多代理 + 每个重试 2 次。
+    function extractShareId(url) {
+      var m = String(url || '').match(/chat\.deepseek\.com\/share\/([^\/?#]+)/i);
+      return m ? m[1] : null;
+    }
+
+    function parseShareApiJson(text) {
+      var j;
+      try { j = JSON.parse(text); } catch (e) { throw new Error('API 返回不是 JSON'); }
+      var biz = j && j.data && j.data.biz_data;
+      var msgs = biz && biz.messages;
+      if (!Array.isArray(msgs) || !msgs.length) throw new Error('API 里没有消息');
+      var out = [];
+      msgs.forEach(function (m) {
+        var role = String(m.role || '').toUpperCase();
+        var frag = m.fragments;
+        var parts = [];
+        if (Array.isArray(frag)) frag.forEach(function (f) {
+          var type = String(f.type || '').toUpperCase();
+          if (type === 'THINK' || type === 'REASONING') return;
+          if (f.content && String(f.content).trim()) parts.push(String(f.content).trim());
+        });
+        if (!parts.length && m.content && String(m.content).trim()) parts.push(String(m.content).trim());
+        var body = parts.join('\n').trim();
+        if (!body) return;
+        out.push((role === 'ASSISTANT' ? '助手：' : '用户：') + body);
+      });
+      if (!out.length) throw new Error('API 里没有正文');
+      return { title: biz.title || 'DeepSeek 分享对话', text: out.join('\n\n'), count: out.length };
+    }
+
+    // 转发 API 的代理（都带 CORS；实测 allorigins 单次可成功）
+    var API_PROXIES = [
+      { name: 'allorigins', get: function (apiUrl) { return fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(apiUrl)).then(okText); } },
+      { name: 'codingco', get: function (apiUrl) { return fetchWithTimeout('https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(apiUrl)).then(okText); } },
+      { name: 'allorigins-get', get: function (apiUrl) { return fetchWithTimeout('https://api.allorigins.win/get?url=' + encodeURIComponent(apiUrl)).then(function (r) { return r.json().then(function (j) { return j.contents || ''; }); }); } }
+    ];
+
+    // 尝试用 API 拿 DS 分享全量；成功返回 {text,via,count}，失败返回 null（让上层退回页面通道）
+    function fetchShareViaApi(shareId, onProgress) {
+      var apiUrl = 'https://chat.deepseek.com/api/v0/share/content?share_id=' + encodeURIComponent(shareId);
+      var attempts = [];
+      API_PROXIES.forEach(function (p) { attempts.push({ p: p, try: 0 }); });
+      var idx = 0;
+      function next() {
+        if (idx >= attempts.length) return Promise.resolve(null);
+        var a = attempts[idx];
+        if (onProgress) onProgress(a.p.name + '·API' + (a.try ? '(重试)' : ''));
+        return a.p.get(apiUrl).then(function (txt) {
+          var parsed = parseShareApiJson(txt);
+          return { text: parsed.text, via: a.p.name + '(API)', title: parsed.title, count: parsed.count };
+        }).catch(function () {
+          a.try++;
+          // 同一个代理再试一次，然后换下一个
+          if (a.try < 2) return next();
+          idx++;
+          return next();
+        });
+      }
+      return next();
+    }
+
     // 依次尝试代理，返回第一个非空结果；全部失败则抛出可读错误
     function fetchLink(raw, onProgress) {
       var url = normalizeUrl(raw);
       if (!url) return Promise.reject(new Error('链接格式不对，检查一下'));
+
+      // DS 分享链接：优先走 API 拿全量（虚拟滚动页面读不出完整对话）
+      var shareId = extractShareId(url);
+      if (shareId) {
+        if (onProgress) onProgress('DeepSeek 接口');
+        return fetchShareViaApi(shareId, onProgress).then(function (res) {
+          if (res) return res;
+          // API 全失败 → 退回原来的页面读取通道（可能只能拿到一点，但总比没有强）
+          return fetchViaPage(url, onProgress);
+        });
+      }
+      return fetchViaPage(url, onProgress);
+    }
+
+    // 原页面读取通道（Gemini / ChatGPT / DS 兜底）
+    function fetchViaPage(url, onProgress) {
       var i = 0, lastErr = null;
       function next() {
         if (i >= PROXIES.length) {
