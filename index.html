@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>顿悟卡片 · 把想通的那一刻存下来</title>
-<link rel="stylesheet" href="css/style.css?v=20261125g1">
+<link rel="stylesheet" href="css/style.css?v=20261125h">
 </head>
 <body>
 
@@ -108,10 +108,23 @@
         </div>
       </div>
 
-      <!-- 来源选择 -->
+      <!-- 方式选择：选哪个，下面才显示对应的输入框 -->
       <div class="panel">
-        <div class="panel-title"><span class="step-dot">1</span> 对话从哪里来？</div>
-        <div class="source-grid" id="sourceGrid"></div>
+        <div class="panel-title"><span class="step-dot">1</span> 对话从哪里来？<span class="way-title-hint">选一个，下面会变成对应的输入框；格式全自动识别，不用你操心</span></div>
+        <div class="way-grid" id="wayGrid">
+          <button class="way-card selected" data-way="paste" type="button">
+            <span class="way-ico">📋</span><span class="way-name">粘贴文本</span><span class="way-desc">复制对话原样贴进来</span>
+          </button>
+          <button class="way-card" data-way="link" type="button">
+            <span class="way-ico">🔗</span><span class="way-name">分享链接</span><span class="way-desc">贴链接自动读全（手机用这个）</span>
+          </button>
+          <button class="way-card" data-way="ds" type="button">
+            <span class="way-ico">🐳</span><span class="way-name">DeepSeek 一键导出</span><span class="way-desc">几百轮也一次拿全</span>
+          </button>
+          <button class="way-card" data-way="manual" type="button">
+            <span class="way-ico">✍️</span><span class="way-name">手动填写</span><span class="way-desc">自己分两段贴</span>
+          </button>
+        </div>
       </div>
 
       <!-- 手动两段输入 -->
@@ -125,16 +138,23 @@
         <textarea class="input textarea" id="manualAnswer" rows="7" placeholder="把 AI 讲解、你们辩论的内容贴在这里…"></textarea>
       </div>
 
-      <!-- 链接导入 -->
-      <div class="panel link-panel" id="linkPanel">
+      <!-- 链接导入（手机、电脑通用） -->
+      <div class="panel link-panel hidden" id="linkPanel">
         <div class="panel-title"><span class="link-icon">🔗</span> 有分享链接？直接读进来 <span class="link-tag">新</span></div>
-        <p class="hint" style="margin-top:-6px">Gemini / ChatGPT / DeepSeek 的「分享对话」会生成一个公开链接。把链接贴进来，自动读出对话文本——不用手动复制。DS 若只读到联网搜索外壳，工具会尽力剥离，读不出就按提示手动复制。</p>
+        <p class="hint" style="margin-top:-6px"> Gemini / ChatGPT / DeepSeek 的「分享对话」会生成一个公开链接。把链接贴进来，自动读出对话文本——<b>手机上也能用，不用装任何东西</b>。DeepSeek 若只读到联网搜索外壳，可改用上面的「一键导出」。</p>
         <div class="link-row">
           <input type="text" class="input" id="linkInput" placeholder="粘贴分享链接，例如 g.co/gemini/share/...、chatgpt.com/share/... 或 chat.deepseek.com/share/...">
           <button class="btn secondary" id="fetchLinkBtn">读取链接</button>
         </div>
         <div class="link-status hidden" id="linkStatus"></div>
-        <!-- DeepSeek 一键导出器：产品内三步向导 -->
+        <details class="link-note">
+          <summary>关于隐私和失败怎么办（点开看）</summary>
+          <p>读取时对话内容会经过公共中转服务，<b>敏感内容请改用「粘贴文本」手动复制</b>。如果读取失败（链接需登录、网络不通、或对方禁止抓取），工具会自动换几个通道再试；都不行就把链接用浏览器打开、全选复制文本，贴到「粘贴文本」里，效果一样。DeepSeek 长对话（几百轮）建议用「一键导出」。</p>
+        </details>
+      </div>
+
+      <!-- DeepSeek 一键导出器（独立面板，只在选 DS 时显示） -->
+      <div class="panel hidden" id="dsPanel">
         <div class="ds-wizard" id="dsWizard">
           <div class="ds-wizard-head">
             <span class="ds-wizard-icon">🐳</span>
@@ -171,10 +191,11 @@
           </div>
           <div class="ds-step-status hidden" id="dsStepStatus"></div>
         </div>
-        <details class="link-note">
-          <summary>关于隐私和失败怎么办（点开看）</summary>
-          <p>读取时对话内容会经过公共中转服务，<b>敏感内容请改用手动复制</b>。如果读取失败（链接需登录、网络不通、或对方禁止抓取），工具会自动换几个通道再试；都不行就把链接用浏览器打开、全选复制文本，贴到下面的框里，效果一样。DeepSeek 分享链接会先尝试走它自己的公开接口读完整对话，接口不稳时请改用上面的导出器。</p>
-        </details>
+        <div class="ds-mobile-note hidden" id="dsMobileNote">
+          <div class="ds-mobile-title">📱 手机上装不了油猴？没关系</div>
+          <p>手机浏览器（iOS Safari、安卓 Chrome）不支持油猴脚本，这是浏览器的限制。但手机上照样能把 DeepSeek 对话导进来：打开你的 DS 对话 → 点「分享」生成链接 → 回到本页选「分享链接」贴进去，就能自动读全，不用装任何东西。</p>
+          <button class="btn secondary small" type="button" id="dsToLinkBtn">去用分享链接导入 →</button>
+        </div>
       </div>
 
       <!-- 通用粘贴 -->
@@ -191,10 +212,6 @@
           </span>
           <span class="file-btn tidy-btn" id="tidyBtnWrap" title="去掉 #、网址、反引号等符号，只留干净对话">✨ 整理格式</span>
         </div>
-        <details class="advanced" id="advancedBox">
-          <summary>高级：来源格式不对？手动选 / 自定义（一般不用管）</summary>
-          <div class="source-grid compact" id="sourceGrid"></div>
-        </details>
       </div>
 
       <div class="action-row">
@@ -415,9 +432,9 @@
 
 <div class="toast hidden" id="toast"></div>
 
-<script src="js/importers.js?v=20261125g1"></script>
-<script src="js/analyzer.js?v=20261125g1"></script>
-<script src="js/store.js?v=20261125g1"></script>
-<script src="js/app.js?v=20261125g1"></script>
+<script src="js/importers.js?v=20261125h"></script>
+<script src="js/analyzer.js?v=20261125h"></script>
+<script src="js/store.js?v=20261125h"></script>
+<script src="js/app.js?v=20261125h"></script>
 </body>
 </html>
