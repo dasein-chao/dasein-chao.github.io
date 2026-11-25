@@ -41,14 +41,28 @@
       setLinkStatus('loading', '正在读取… 当前通道：<b>' + esc(name) + '</b>（失败会自动换下一个）');
     }).then(function (res) {
       // 链接读到的文本同样过一遍统一清洗（去残留 markdown 噪音）
-      $('#rawInput').value = Importers.sanitize(res.text);
-      previewConv = null; $('#previewPanel').classList.add('hidden');
-      updateAutoDetect();
+      var clean = Importers.sanitize(res.text);
       var isFull = /API/.test(res.via || '');
       var detail = isFull && res.count
         ? '完整对话 ' + res.count + ' 条（虚拟滚动看不见的也拿到了）'
-        : res.text.length + ' 字';
-      setLinkStatus('ok', '✅ 读到了对话（' + detail + '，通道：' + esc(res.via) + '）。已填进下面的框，点「看识别预览」检查角色对不对。');
+        : clean.length + ' 字';
+      // 能干净分出多段对话 → 直接建卡，一步到位（手机用户不用再点好几下）
+      var conv = null;
+      try { conv = Importers.parse('auto', clean); } catch (e2) { conv = null; }
+      if (conv && conv.messages && conv.messages.length >= 2) {
+        setLinkStatus('ok', '✅ 读到了对话（' + detail + '，通道：' + esc(res.via) + '），卡片已自动生成，去卡片库查看/润色。');
+        goto('cards');
+        setTimeout(function () {
+          var n = autoBuildFromConv(conv);
+          toast('已自动生成 ' + n + ' 张草稿卡片，去卡片库润色');
+        }, 60);
+        return;
+      }
+      // 分不出多段 → 填进框让用户核对角色
+      $('#rawInput').value = clean;
+      previewConv = null; $('#previewPanel').classList.add('hidden');
+      updateAutoDetect();
+      setLinkStatus('ok', '✅ 读到了内容（' + detail + '，通道：' + esc(res.via) + '），已填进下面的框，点「看识别预览」检查角色对不对。');
       toast('读取成功，已填入下方');
     }).catch(function (e) {
       var orig = $('#linkInput').value.trim();
@@ -59,6 +73,21 @@
       btn.disabled = false; btn.textContent = '读取链接';
     });
   }
+  // 从标准对话对象一步到位生成卡片并入库、弹结果（自动导入路径共用）
+  function autoBuildFromConv(conv) {
+    if (!conv || !conv.messages || !conv.messages.length) { toast('对话里没有可生成的消息'); return 0; }
+    var made = Analyzer.analyzeLocal(conv);
+    var n = 0;
+    Store.update(function (st) {
+      st.conversations.unshift(conv);
+      st.cards = made.concat(st.cards);
+      n = made.length;
+    });
+    state = Store.load(); persist(); renderCards();
+    showImportResult(1, n, 1);
+    return n;
+  }
+
   /* ---------- 导入油猴脚本导出的 JSON 文件 ---------- */
   function handleExportedFile(data) {
     if (data.format === 'conversation-bundle') {
@@ -122,29 +151,26 @@
     var hint = $('#dsGoHint');
     if (!badge) return installed;
     if (installed) {
-      badge.innerHTML = '<span class="ds-ok">✓ 已安装，可以直接用了</span>';
+      badge.innerHTML = '<span class="ds-ok">✓ 已安装导出器，可以直接用</span>';
       badge.classList.remove('hidden');
       if (goBtn) { goBtn.classList.remove('hidden', 'disabled'); goBtn.textContent = '🚀 去 DeepSeek 导出，自动送回这里'; }
       if (hint) hint.textContent = '点下面的按钮打开 DeepSeek，导出后数据会自动回到这个页面。';
     } else {
-      badge.innerHTML = '<span class="ds-wait">尚未检测到导出器，按上面 ①② 步安装</span>';
+      // 关键：不拦按钮、不说死「没装」。沙箱/缓存都可能让检测失效，
+      // 让用户直接点去试——DS 页脚本运行了就能导出，这是最可靠的判断。
+      badge.innerHTML = '<span class="ds-wait">没检测到也不用纠结，直接点下面按钮试一次；若装好了就能导出，没装再按 ①② 步装。</span>';
       badge.classList.remove('hidden');
-      if (goBtn) goBtn.textContent = '🚀 去 DeepSeek 导出，自动送回这里';
+      if (goBtn) { goBtn.classList.remove('hidden', 'disabled'); goBtn.textContent = '🚀 去 DeepSeek 导出，自动送回这里'; }
     }
     return installed;
   }
 
-  // 一键跳转：生成一次性令牌，带在 DS 网址上；导出脚本会凭它把数据送回
+  // 一键跳转：生成一次性令牌，带在 DS 网址上；导出脚本会凭它把数据送回。
+  // 注意：绝不因为「检测不到」而拦截——检测沙箱等环境会误报，而脚本在 DS 页一定运行，
+  // 让用户直接点、能导出就说明装好了，才是真正不添堵的做法。
   function goDsExport() {
     var info = dsStoreInfo();
-    if (info.mobile) { toast('手机浏览器装不了油猴，请用电脑操作，或手动复制对话'); return; }
-    var installed = !!(window.__daseinDsExport && window.__daseinDsExport.installed) ||
-      document.documentElement.hasAttribute('data-ds-export-installed');
-    if (!installed) {
-      toast('请先完成上面 ①② 步安装，再点这个按钮');
-      checkDsInstalled();
-      return;
-    }
+    if (info.mobile) { toast('手机请用「分享链接」方式导入'); selectWay('link'); return; }
     var token = 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
     try { sessionStorage.setItem(DS_TOKEN_KEY, token); } catch (e) {}
     var from = location.href.split('#')[0];
@@ -181,16 +207,7 @@
           }
           // 单对话：直接解析→生成卡片→入库→弹结果，跳过预览
           var conv = Importers.parse('dsjson', payload);
-          if (!conv.messages.length) { toast('对话里没有可生成的消息'); return; }
-          var made = Analyzer.analyzeLocal(conv);
-          var okN = 0;
-          Store.update(function (st) {
-            st.conversations.unshift(conv);
-            st.cards = made.concat(st.cards);
-            okN = made.length;
-          });
-          state = Store.load(); persist(); renderCards();
-          showImportResult(1, okN, 1);
+          var okN = autoBuildFromConv(conv);
           toast('已自动生成 ' + okN + ' 张草稿卡片，去卡片库润色');
         } catch (err) {
           setLinkStatus('err', '数据收到了，但生成卡片时出错：' + esc(err.message || String(err)));
@@ -224,27 +241,35 @@
   }
 
   /* ---------- 来源选择 ---------- */
-  function renderSources() {
-    var grid = $('#sourceGrid');
-    grid.innerHTML = '';
-    Importers.list().forEach(function (a) {
-      var b = document.createElement('button');
-      b.className = 'source-card' + (a.id === selectedSource ? ' selected' : '');
-      b.dataset.id = a.id;
-      b.innerHTML = '<span class="source-icon">' + (a.icon || '📄') + '</span>' +
-        '<div class="source-name">' + esc(a.name) + '</div>' +
-        '<div class="source-desc">' + esc(a.desc || '') + '</div>';
-      b.addEventListener('click', function () { selectSource(a.id); });
-      grid.appendChild(b);
+  // 来源格式全自动识别，不再让用户选（旧版那 6 个选项点了大多没反应，已移除）
+  function renderSources() { /* 保留空函数，兼容旧调用 */ }
+
+  // 方式切换：paste / link / ds / manual —— 只显示对应的输入框
+  function selectWay(way) {
+    $$('#wayGrid .way-card').forEach(function (b) { b.classList.toggle('selected', b.dataset.way === way); });
+    var show = {
+      paste: ['#pastePanel'],
+      link: ['#linkPanel'],
+      ds: ['#dsPanel'],
+      manual: ['#manualPanel']
+    };
+    ['#pastePanel', '#linkPanel', '#dsPanel', '#manualPanel'].forEach(function (sel) {
+      var el = $(sel); if (el) el.classList.add('hidden');
     });
-  }
-  function selectSource(id) {
-    selectedSource = id;
-    renderSources();
-    var isManual = !!(Importers.get(id) && Importers.get(id).manual);
-    $('#manualPanel').classList.toggle('hidden', !isManual);
-    $('#pastePanel').classList.toggle('hidden', isManual);
+    (show[way] || show.paste).forEach(function (sel) { var el = $(sel); if (el) el.classList.remove('hidden'); });
+    // 方式切换时保留解析来源=auto（全自动识别）
+    selectedSource = way === 'manual' ? 'manual' : 'auto';
     $('#autoTag').textContent = '';
+    if (way === 'ds') { checkDsInstalled(); updateDsMobileUI(); }
+  }
+
+  // 手机装不了油猴：DS 面板对手机用户显示「用分享链接」引导，隐藏三步向导
+  function updateDsMobileUI() {
+    var mobile = dsStoreInfo().mobile;
+    var wizard = $('#dsWizard');
+    var mnote = $('#dsMobileNote');
+    if (wizard) wizard.classList.toggle('hidden', mobile);
+    if (mnote) mnote.classList.toggle('hidden', !mobile);
   }
 
   /* ---------- 自动识别提示 ---------- */
@@ -731,6 +756,12 @@
     $('#fetchLinkBtn').addEventListener('click', doFetchLink);
     $('#linkInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doFetchLink(); });
 
+    // 导入方式切换（选哪个显示哪个输入框）
+    $$('#wayGrid .way-card').forEach(function (b) {
+      b.addEventListener('click', function () { selectWay(b.dataset.way); });
+    });
+    if ($('#dsToLinkBtn')) $('#dsToLinkBtn').addEventListener('click', function () { selectWay('link'); });
+
     // DeepSeek 一键导出器向导
     if ($('#dsGoBtn')) {
       $('#dsGoBtn').addEventListener('click', goDsExport);
@@ -739,9 +770,7 @@
         $('#dsStoreLink').href = store.url;
         $('#dsStoreName').textContent = store.name;
       }
-      if (store.mobile && $('#dsStep1')) {
-        $('#dsStep1').innerHTML = '<b>请在电脑上操作</b>：手机浏览器装不了油猴导出器。在电脑浏览器打开本页，按下面步骤装一次即可。';
-      }
+      updateDsMobileUI();
     }
 
     $('#fileInput').addEventListener('change', function (e) {
@@ -840,8 +869,7 @@
 
   /* ---------- 启动 ---------- */
   function init() {
-    renderSources();
-    selectSource('auto');
+    selectWay('paste');
     loadSettingsUI();
     refreshCounts();
     bind();
