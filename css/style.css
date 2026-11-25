@@ -300,3 +300,18 @@ body{
 .ds-step-status{margin-top:11px;font-size:12px;padding:8px 11px;border-radius:8px;background:#f4f6ff}
 .ds-ok{color:#12785a;font-weight:650}
 .ds-wait{color:#8a90a0}
+
+/* ===== 导入方式选择（tab 式） ===== */
+.way-title-hint{font-size:11px;font-weight:400;color:var(--faint);margin-left:auto}
+.way-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.way-card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:12px 12px;border:1px solid var(--line);border-radius:11px;background:#fff;cursor:pointer;transition:all .15s;color:var(--ink)}
+.way-card:hover{border-color:#c9cefb;background:#fafbff}
+.way-card.selected{border-color:var(--brand);background:var(--brand-soft);box-shadow:0 0 0 1px var(--brand) inset}
+.way-ico{font-size:20px;line-height:1.2;margin-bottom:3px}
+.way-name{font-size:12.5px;font-weight:700}
+.way-desc{font-size:10.5px;color:var(--faint);line-height:1.4}
+.way-card.selected .way-desc{color:#6b72c9}
+@media(max-width:640px){.way-grid{grid-template-columns:repeat(2,1fr)}.way-title-hint{display:none}}
+.ds-mobile-note{margin-top:12px;background:#f0f6ff;border:1px solid #d6e4ff;border-radius:10px;padding:12px 13px}
+.ds-mobile-title{font-size:13px;font-weight:700;color:#2c5aa0;margin-bottom:5px}
+.ds-mobile-note p{font-size:12px;color:#5b6270;line-height:1.7;margin-bottom:9px}
