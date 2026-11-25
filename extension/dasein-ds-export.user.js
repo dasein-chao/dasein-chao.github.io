@@ -1,12 +1,15 @@
 // ==UserScript==
 // @name         顿悟卡片·DeepSeek 对话导出器
 // @namespace    https://dasein-chao.github.io/
-// @version      2.0.0
+// @version      2.1.0
 // @description  在 DeepSeek 页面一键导出完整对话（几百轮、虚拟滚动看不见的也能拿全）。从顿悟卡片网站点「去导出」进来的，导出后会自动把数据送回网站、直接生成卡片，不用复制粘贴。全程在你自己的浏览器里完成，不上传任何数据。
 // @match        https://chat.deepseek.com/*
 // @match        https://dasein-chao.github.io/*
+// @grant        unsafeWindow
 // @grant        GM_setClipboard
 // @grant        GM_registerMenuCommand
+// @downloadURL  https://dasein-chao.github.io/extension/dasein-ds-export.user.js
+// @updateURL    https://dasein-chao.github.io/extension/dasein-ds-export.user.js
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -349,14 +352,17 @@
     });
   }
 
-  // 在产品页注入「已安装」标记，供网站向导自检测打勾（不弹任何 UI）
+  // 在产品页注入「已安装」标记，供网站向导自检测打勾（不弹任何 UI）。
+  // 关键：油猴开了 @grant 后脚本跑在隔离沙箱，沙箱里的 window/document 是代理，
+  // 写上去的属性页面主世界读不到——必须用 unsafeWindow 写到真实页面上下文。
   function markInstalledOnProductPage() {
+    var W = (typeof unsafeWindow !== 'undefined' && unsafeWindow) ? unsafeWindow : window;
     try {
-      document.documentElement.setAttribute('data-ds-export-installed', '2.0.0');
-      window.__daseinDsExport = { installed: true, version: '2.0.0' };
-      window.dispatchEvent(new CustomEvent('dasein-ds-installed'));
-      log('在产品页标记已安装');
-    } catch (e) {}
+      W.document.documentElement.setAttribute('data-ds-export-installed', '2.1.0');
+      W.__daseinDsExport = { installed: true, version: '2.1.0' };
+      try { W.dispatchEvent(new W.CustomEvent('dasein-ds-installed')); } catch (e2) {}
+      log('在产品页标记已安装（unsafeWindow）');
+    } catch (e) { log('标记失败', e); }
   }
 
   /* ---------- 启动 ---------- */
